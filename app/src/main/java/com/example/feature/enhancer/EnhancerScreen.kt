@@ -37,8 +37,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Hd
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -795,7 +795,7 @@ private fun BeforeAfterComparisonCard(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Filled.CompareArrows,
+                imageVector = Icons.AutoMirrored.Filled.CompareArrows,
                 contentDescription = "Geser perbandingan Sebelum dan Sesudah",
                 tint = Color(0xFF060B17),
                 modifier = Modifier.size(22.dp)
