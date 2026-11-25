@@ -360,11 +360,19 @@ fun EnhancerScreen(
                             AndroidView(
                                 factory = { ctx ->
                                     VideoView(ctx).apply {
+                                        tag = state.selectedUri
                                         setVideoURI(state.selectedUri)
                                         setOnPreparedListener { mp ->
                                             mp.isLooping = true
                                             start()
                                         }
+                                    }
+                                },
+                                update = { view ->
+                                    if (view.tag != state.selectedUri) {
+                                        view.tag = state.selectedUri
+                                        view.setVideoURI(state.selectedUri)
+                                        view.start()
                                     }
                                 },
                                 modifier = Modifier.fillMaxSize()

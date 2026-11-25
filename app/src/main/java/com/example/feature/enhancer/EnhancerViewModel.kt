@@ -231,12 +231,12 @@ class EnhancerViewModel : ViewModel() {
                 val jsonText = response.text ?: throw IllegalStateException("Respons AI kosong.")
                 val json = JSONObject(jsonText)
                 val aiParams = EnhancementParams(
-                    sharpness = json.optDouble("sharpness", 0.72).toFloat().coerceIn(0f, 1f),
-                    contrast = json.optDouble("contrast", 1.18).toFloat().coerceIn(0.75f, 1.55f),
-                    brightness = json.optDouble("brightness", 0.04).toFloat().coerceIn(-0.25f, 0.25f),
-                    saturation = json.optDouble("saturation", 1.16).toFloat().coerceIn(0.3f, 1.6f),
-                    warmth = json.optDouble("warmth", 0.03).toFloat().coerceIn(-0.28f, 0.28f),
-                    vignette = json.optDouble("vignette", 0.14).toFloat().coerceIn(0f, 0.6f)
+                    sharpness = json.optDouble("sharpness", 0.62).toFloat().coerceIn(0.15f, 0.85f),
+                    contrast = json.optDouble("contrast", 1.10).toFloat().coerceIn(0.92f, 1.24f),
+                    brightness = json.optDouble("brightness", 0.04).toFloat().coerceIn(-0.15f, 0.18f),
+                    saturation = json.optDouble("saturation", 1.12).toFloat().coerceIn(0.85f, 1.32f),
+                    warmth = json.optDouble("warmth", 0.02).toFloat().coerceIn(-0.18f, 0.18f),
+                    vignette = json.optDouble("vignette", 0.0).toFloat().coerceIn(0f, 0.22f)
                 )
                 val summary = json.optString(
                     "summary",
