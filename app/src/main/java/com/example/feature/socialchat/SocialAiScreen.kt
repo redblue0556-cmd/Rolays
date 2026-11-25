@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.components.LiquidGlassSurface
+import com.example.ui.components.WorkflowStepBar
 import com.example.ui.theme.LocalLiquidGlassPalette
 
 @Composable
@@ -96,13 +97,26 @@ fun SocialAiScreen(
         label = "social_hub_to_chat_transition"
     ) { showPicker ->
         if (showPicker) {
+            val hasPayload = state.attachedBitmap != null || state.inputText.isNotBlank()
             SocialPlatformPickerScreen(
                 searchQuery = state.searchQuery,
                 showExtraPlatforms = state.showExtraPlatforms,
                 onSearchQueryChange = { viewModel.updateSearchQuery(it) },
                 onToggleExtraPlatforms = { viewModel.toggleExtraPlatforms() },
                 onPlatformSelected = { viewModel.openPlatformChat(it) },
-                onBackPressed = onExitToHome
+                onBackPressed = onExitToHome,
+                hasWorkflowPayload = hasPayload,
+                workflowStepBar = {
+                    WorkflowStepBar(
+                        steps = listOf("Pilih Medsos", "Chat AI", "Salin/Bagikan"),
+                        currentStepIndex = 0,
+                        onStepClick = { step ->
+                            if (step == 1) {
+                                viewModel.openPlatformChat(state.selectedPlatform)
+                            }
+                        }
+                    )
+                }
             )
         } else {
             SocialPlatformChatRoom(
@@ -216,6 +230,28 @@ private fun SocialPlatformChatRoom(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val hasAssistantReply = messages.size > 1 && messages.any { !it.isUser && !it.isStreaming && it.text.isNotBlank() }
+            WorkflowStepBar(
+                steps = listOf("Pilih Medsos", "Chat AI", "Salin/Bagikan"),
+                currentStepIndex = if (hasAssistantReply) 2 else 1,
+                onStepClick = { step ->
+                    when (step) {
+                        0 -> onBackToPicker()
+                        1 -> if (!state.isGenerating && (state.inputText.isNotBlank() || state.attachedBitmap != null)) {
+                            onSendPrompt(null)
+                        }
+                        2 -> {
+                            val latestReply = messages.lastOrNull { !it.isUser && !it.isStreaming && !it.isError && it.text.isNotBlank() }
+                            if (latestReply != null) {
+                                clipboard.setText(AnnotatedString(latestReply.text))
+                            }
+                        }
+                    }
+                }
+            )
 
             Spacer(modifier = Modifier.height(10.dp))
 

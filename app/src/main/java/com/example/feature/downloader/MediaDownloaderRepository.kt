@@ -3,6 +3,8 @@ package com.example.feature.downloader
 import android.app.DownloadManager
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -346,5 +348,20 @@ class MediaDownloaderRepository {
                 )
             }
         }
+    }
+
+    suspend fun loadThumbnailBitmap(url: String): Bitmap? = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Android 14; Mobile) ROLAYS/1.0")
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@use null
+                resp.body?.byteStream()?.use { stream ->
+                    BitmapFactory.decodeStream(stream)
+                }
+            }
+        }.getOrNull()
     }
 }

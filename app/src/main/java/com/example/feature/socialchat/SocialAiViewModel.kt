@@ -104,6 +104,26 @@ class SocialAiViewModel : ViewModel() {
         }
     }
 
+    fun attachBitmapFromWorkflow(bitmap: Bitmap, suggestedPrompt: String) {
+        val compressed = ImageEnhancementEngine.compressForAiAnalysis(bitmap)
+        _uiState.update {
+            it.copy(
+                attachedBitmap = compressed,
+                inputText = suggestedPrompt,
+                isPickerVisible = true
+            )
+        }
+    }
+
+    fun prefillPromptFromWorkflow(prompt: String) {
+        _uiState.update {
+            it.copy(
+                inputText = prompt,
+                isPickerVisible = true
+            )
+        }
+    }
+
     fun clearAttachedImage() {
         _uiState.update { it.copy(attachedBitmap = null) }
     }

@@ -1,5 +1,6 @@
 package com.example.feature.enhancer
 
+import android.graphics.Bitmap
 import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -20,7 +21,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,8 +36,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Hd
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.SaveAlt
@@ -79,12 +81,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.components.LiquidGlassSurface
+import com.example.ui.components.WorkflowStepBar
 import com.example.ui.theme.LocalLiquidGlassPalette
 import kotlin.math.roundToInt
 
 @Composable
 fun EnhancerScreen(
     modifier: Modifier = Modifier,
+    onSendToSocialAi: (Bitmap) -> Unit = {},
     viewModel: EnhancerViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -188,6 +192,39 @@ fun EnhancerScreen(
                     }
                 }
             }
+
+            // Workflow Progress Bar
+            val enhancerStep = when {
+                state.saveMessage != null -> 2
+                state.selectedUri != null || state.aiState is AiEnhanceState.Success ||
+                    state.selectedPreset != EnhancementPreset.ORIGINAL -> 1
+                else -> 0
+            }
+            WorkflowStepBar(
+                steps = listOf("Pilih", "Edit HD", "Simpan"),
+                currentStepIndex = enhancerStep,
+                onStepClick = { step ->
+                    when (step) {
+                        0 -> {
+                            val req = if (state.mediaType == EnhancerMediaType.PHOTO) {
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            } else {
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                            }
+                            runCatching { mediaPicker.launch(req) }.onFailure {
+                                val mime = if (state.mediaType == EnhancerMediaType.PHOTO) {
+                                    arrayOf("image/*")
+                                } else {
+                                    arrayOf("video/*")
+                                }
+                                fallbackDocPicker.launch(mime)
+                            }
+                        }
+                        1 -> viewModel.runAiAutoEnhance()
+                        2 -> viewModel.saveEnhancedToGallery(context)
+                    }
+                }
+            )
 
             // Photo / Video Mode Pill Toggle
             LiquidGlassSurface(
@@ -609,6 +646,50 @@ fun EnhancerScreen(
                     text = state.saveMessage.orEmpty(),
                     accent = glass.mintAccent
                 )
+            }
+
+            // Cross-Feature Workflow Handoff: HD Enhancer -> AI Chatbot Medsos
+            LiquidGlassSurface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .testTag("enhancer_to_social_button"),
+                shape = RoundedCornerShape(20.dp),
+                cornerRadiusDp = 20.dp,
+                tintColor = glass.violetAccent.copy(alpha = 0.24f),
+                contentPadding = PaddingValues(vertical = 12.dp, horizontal = 16.dp),
+                onClick = {
+                    val exportBitmap = state.afterBitmap ?: state.beforeBitmap
+                    if (exportBitmap != null) {
+                        onSendToSocialAi(exportBitmap)
+                    }
+                }
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Forum,
+                        contentDescription = null,
+                        tint = glass.violetAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Buat Caption di AI Chatbot",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = glass.textPrimary
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = glass.cyanAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(104.dp))

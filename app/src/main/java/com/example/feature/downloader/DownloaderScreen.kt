@@ -1,5 +1,6 @@
 package com.example.feature.downloader
 
+import android.graphics.Bitmap
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,9 +23,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Verified
@@ -54,11 +57,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.ui.components.LiquidGlassSurface
+import com.example.ui.components.WorkflowStepBar
 import com.example.ui.theme.LocalLiquidGlassPalette
 
 @Composable
 fun DownloaderScreen(
     modifier: Modifier = Modifier,
+    onSendToSocialAi: (String) -> Unit = {},
+    onSendToEnhancer: (Bitmap, String) -> Unit = { _, _ -> },
     viewModel: DownloaderViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -89,6 +95,32 @@ fun DownloaderScreen(
                     color = glass.textSecondary
                 )
             }
+
+            val downloaderStep = when {
+                state.isDownloading || state.history.isNotEmpty() || state.downloadStatus != null -> 2
+                state.fetchState is DownloaderFetchState.Ready -> 1
+                else -> 0
+            }
+            WorkflowStepBar(
+                steps = listOf("Tempel", "Kualitas", "Unduh"),
+                currentStepIndex = downloaderStep,
+                onStepClick = { step ->
+                    when (step) {
+                        0 -> {
+                            val text = clipboard.getText()?.text.orEmpty()
+                            if (text.isNotBlank()) {
+                                viewModel.pasteAndAnalyze(text)
+                            } else if (state.urlInput.isNotBlank()) {
+                                viewModel.analyzeLink()
+                            }
+                        }
+                        1 -> if (state.fetchState !is DownloaderFetchState.Ready) viewModel.analyzeLink()
+                        2 -> if (state.fetchState is DownloaderFetchState.Ready && !state.isDownloading) {
+                            viewModel.startDownload(context)
+                        }
+                    }
+                }
+            )
 
             // Platform Badges
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -496,6 +528,98 @@ fun DownloaderScreen(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = glass.textPrimary
                                     )
+                                }
+                            }
+
+                            // Cross-Feature Workflow Actions: Downloader -> AI Chatbot / HD Enhancer
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                LiquidGlassSurface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .minimumInteractiveComponentSize()
+                                        .testTag("downloader_to_social_button"),
+                                    shape = RoundedCornerShape(16.dp),
+                                    cornerRadiusDp = 16.dp,
+                                    tintColor = glass.cyanAccent.copy(alpha = 0.16f),
+                                    contentPadding = PaddingValues(vertical = 10.dp, horizontal = 10.dp),
+                                    onClick = {
+                                        val prompt = "Buatkan ide konten, hook caption, dan hashtag untuk video " +
+                                            "${info.platform.displayName} berjudul \"${info.title}\" oleh ${info.author} (${info.originalUrl})."
+                                        onSendToSocialAi(prompt)
+                                    }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Forum,
+                                            contentDescription = null,
+                                            tint = glass.cyanAccent,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Olah di AI Chatbot",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = glass.textPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                if (info.thumbnailUrl != null) {
+                                    LiquidGlassSurface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .minimumInteractiveComponentSize()
+                                            .testTag("downloader_to_enhancer_button"),
+                                        shape = RoundedCornerShape(16.dp),
+                                        cornerRadiusDp = 16.dp,
+                                        tintColor = glass.mintAccent.copy(alpha = 0.16f),
+                                        contentPadding = PaddingValues(vertical = 10.dp, horizontal = 10.dp),
+                                        onClick = {
+                                            viewModel.fetchThumbnailAndHandoff(
+                                                url = info.thumbnailUrl,
+                                                title = info.title,
+                                                onReady = onSendToEnhancer
+                                            )
+                                        }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (state.isHandoffLoading) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(14.dp),
+                                                    strokeWidth = 2.dp,
+                                                    color = glass.mintAccent
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = Icons.Filled.AutoFixHigh,
+                                                    contentDescription = null,
+                                                    tint = glass.mintAccent,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Pertajam HD",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = glass.textPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

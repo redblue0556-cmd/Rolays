@@ -72,7 +72,9 @@ fun SocialPlatformPickerScreen(
     onToggleExtraPlatforms: () -> Unit,
     onPlatformSelected: (SocialPlatformSpec) -> Unit,
     onBackPressed: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    hasWorkflowPayload: Boolean = false,
+    workflowStepBar: @Composable () -> Unit = {}
 ) {
     val glass = LocalLiquidGlassPalette.current
     val baseList = if (showExtraPlatforms || searchQuery.isNotBlank()) {
@@ -235,7 +237,31 @@ fun SocialPlatformPickerScreen(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            workflowStepBar()
+
+            AnimatedVisibility(visible = hasWorkflowPayload) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(glass.violetAccent.copy(alpha = 0.22f))
+                        .border(1.dp, glass.cyanAccent.copy(alpha = 0.55f), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = "Media/draf dari alur sebelumnya siap — pilih platform medsos di bawah untuk langsung membuat konten!",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = glass.textPrimary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // 3-Column Liquid Glass Platform Grid (3 cols x 4 rows for core 12 platforms)
             if (filteredPlatforms.isEmpty()) {

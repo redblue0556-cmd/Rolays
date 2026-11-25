@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.components.LiquidGlassSurface
+import com.example.ui.components.WorkflowStepBar
 import com.example.ui.theme.LocalLiquidGlassPalette
 
 @Composable
@@ -172,6 +173,26 @@ fun GeminiFlashScreen(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val flashStep = when {
+                state.entries.any { !it.isUser && it.latencyMs != null } -> 2
+                state.isRunning || state.promptInput.isNotBlank() || state.attachedImage != null -> 1
+                else -> 0
+            }
+            WorkflowStepBar(
+                steps = listOf("Mode", "Prompt", "Hasil"),
+                currentStepIndex = flashStep,
+                onStepClick = { step ->
+                    when (step) {
+                        0 -> showSystemConfig = !showSystemConfig
+                        2 -> if (!state.isRunning && (state.promptInput.isNotBlank() || state.attachedImage != null)) {
+                            viewModel.sendToGeminiFlash()
+                        }
+                    }
+                }
+            )
 
             Spacer(modifier = Modifier.height(10.dp))
 

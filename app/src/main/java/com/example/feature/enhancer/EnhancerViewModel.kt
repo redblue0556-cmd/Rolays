@@ -137,6 +137,32 @@ class EnhancerViewModel : ViewModel() {
         }
     }
 
+    fun loadBitmapForEnhance(bitmap: Bitmap, label: String = "Media Impor") {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    mediaType = EnhancerMediaType.PHOTO,
+                    selectedUri = null,
+                    isProcessing = true,
+                    saveMessage = "Memuat $label ke HD Enhancer...",
+                    aiState = AiEnhanceState.Idle
+                )
+            }
+            sourceFullBitmap = bitmap
+            val enhanced = ImageEnhancementEngine.enhanceBitmap(bitmap, _uiState.value.params)
+            _uiState.update {
+                it.copy(
+                    beforeBitmap = bitmap,
+                    afterBitmap = enhanced,
+                    beforeResolutionLabel = "${bitmap.width}x${bitmap.height}",
+                    afterResolutionLabel = "${enhanced.width}x${enhanced.height} HD",
+                    isProcessing = false,
+                    saveMessage = null
+                )
+            }
+        }
+    }
+
     fun selectPreset(preset: EnhancementPreset) {
         _uiState.update { it.copy(selectedPreset = preset, params = preset.params) }
         reprocessDebounced(immediate = true)

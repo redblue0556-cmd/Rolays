@@ -1,6 +1,7 @@
 package com.example.feature.downloader
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -33,6 +34,7 @@ data class DownloaderUiState(
     val downloadStatus: String? = null,
     val aiCaptionResult: String? = null,
     val isGeneratingAiNote: Boolean = false,
+    val isHandoffLoading: Boolean = false,
     val history: List<DownloadedMediaItem> = emptyList()
 )
 
@@ -173,6 +175,26 @@ class DownloaderViewModel : ViewModel() {
                         isGeneratingAiNote = false,
                         aiCaptionResult = "Gagal membuat saran AI: ${e.localizedMessage ?: "Error"}"
                     )
+                }
+            }
+        }
+    }
+
+    fun fetchThumbnailAndHandoff(
+        url: String,
+        title: String,
+        onReady: (Bitmap, String) -> Unit
+    ) {
+        if (_uiState.value.isHandoffLoading) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isHandoffLoading = true, downloadStatus = null) }
+            val bitmap = repository.loadThumbnailBitmap(url)
+            _uiState.update { it.copy(isHandoffLoading = false) }
+            if (bitmap != null) {
+                onReady(bitmap, title)
+            } else {
+                _uiState.update {
+                    it.copy(downloadStatus = "Gagal memuat thumbnail untuk HD Enhancer.")
                 }
             }
         }

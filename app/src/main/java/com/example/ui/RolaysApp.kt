@@ -7,22 +7,35 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -42,7 +55,9 @@ import com.example.feature.socialchat.SocialAiViewModel
 import com.example.ui.components.InteractiveLiquidGlassNavBar
 import com.example.ui.components.LiquidGlassAmbientBackground
 import com.example.ui.components.LiquidGlassNavRail
+import com.example.ui.components.LiquidGlassSurface
 import com.example.ui.components.RolaysDestination
+import com.example.ui.components.WorkflowHubModalSheet
 import com.example.ui.theme.LocalLiquidGlassPalette
 
 /**
@@ -59,6 +74,7 @@ fun RolaysApp() {
     val selectedDestination = RolaysDestination.entries.firstOrNull { it.route == currentRoute }
         ?: RolaysDestination.ENHANCER
     val glass = LocalLiquidGlassPalette.current
+    var showWorkflowHub by rememberSaveable { mutableStateOf(false) }
 
     // Keep feature ViewModels scoped to the shell so switching tabs preserves state
     val enhancerViewModel: EnhancerViewModel = viewModel()
@@ -103,7 +119,10 @@ fun RolaysApp() {
 
                 Column(modifier = Modifier.weight(1f).fillMaxSize()) {
                     if (selectedDestination != RolaysDestination.SOCIAL_CHAT) {
-                        RolaysTopBrandBar(selectedDestination = selectedDestination)
+                        RolaysTopBrandBar(
+                            selectedDestination = selectedDestination,
+                            onOpenWorkflowHub = { showWorkflowHub = true }
+                        )
                     }
                     RolaysNavHost(
                         navController = navController,
@@ -111,7 +130,8 @@ fun RolaysApp() {
                         downloaderViewModel = downloaderViewModel,
                         socialAiViewModel = socialAiViewModel,
                         geminiFlashViewModel = geminiFlashViewModel,
-                        onNavigateHome = { navigateToDestination(RolaysDestination.ENHANCER) },
+                        onNavigateToTab = navigateToDestination,
+                        onOpenWorkflowHub = { showWorkflowHub = true },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -135,7 +155,10 @@ fun RolaysApp() {
                             .windowInsetsPadding(WindowInsets.statusBars)
                     ) {
                         if (selectedDestination != RolaysDestination.SOCIAL_CHAT) {
-                            RolaysTopBrandBar(selectedDestination = selectedDestination)
+                            RolaysTopBrandBar(
+                                selectedDestination = selectedDestination,
+                                onOpenWorkflowHub = { showWorkflowHub = true }
+                            )
                         }
                         RolaysNavHost(
                             navController = navController,
@@ -143,42 +166,81 @@ fun RolaysApp() {
                             downloaderViewModel = downloaderViewModel,
                             socialAiViewModel = socialAiViewModel,
                             geminiFlashViewModel = geminiFlashViewModel,
-                            onNavigateHome = { navigateToDestination(RolaysDestination.ENHANCER) },
+                            onNavigateToTab = navigateToDestination,
+                            onOpenWorkflowHub = { showWorkflowHub = true },
                             modifier = Modifier.weight(1f)
                         )
                     }
                 }
             }
         }
+
+        if (showWorkflowHub) {
+            WorkflowHubModalSheet(
+                onDismiss = { showWorkflowHub = false },
+                onSelectWorkflow = { target -> navigateToDestination(target) }
+            )
+        }
     }
 }
 
 @Composable
 private fun RolaysTopBrandBar(
-    selectedDestination: RolaysDestination
+    selectedDestination: RolaysDestination,
+    onOpenWorkflowHub: () -> Unit
 ) {
     val glass = LocalLiquidGlassPalette.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "ROLAYS",
-            style = MaterialTheme.typography.titleLarge,
-            color = glass.textPrimary
-        )
-        Text(
-            text = if (selectedDestination == RolaysDestination.GEMINI_FLASH) {
-                "GEMINI 3.8 FLASH"
-            } else {
-                "LIQUID GLASS • TAHAN & GESER BAR"
-            },
-            style = MaterialTheme.typography.labelSmall,
-            color = glass.cyanAccent
-        )
+        Column {
+            Text(
+                text = "ROLAYS",
+                style = MaterialTheme.typography.titleLarge,
+                color = glass.textPrimary
+            )
+            Text(
+                text = if (selectedDestination == RolaysDestination.GEMINI_FLASH) {
+                    "MODUL GEMINI 3.8 FLASH"
+                } else {
+                    "TAHAN & GESER BAR NAVIGASI"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = glass.cyanAccent
+            )
+        }
+
+        LiquidGlassSurface(
+            modifier = Modifier
+                .minimumInteractiveComponentSize()
+                .testTag("open_workflow_hub_button"),
+            shape = RoundedCornerShape(16.dp),
+            cornerRadiusDp = 16.dp,
+            tintColor = glass.cyanAccent.copy(alpha = 0.20f),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            onClick = onOpenWorkflowHub
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Route,
+                    contentDescription = "Buka Alur Kerja ROLAYS",
+                    tint = glass.cyanAccent,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Alur Kerja",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = glass.textPrimary
+                )
+            }
+        }
     }
 }
 
@@ -189,7 +251,8 @@ private fun RolaysNavHost(
     downloaderViewModel: DownloaderViewModel,
     socialAiViewModel: SocialAiViewModel,
     geminiFlashViewModel: GeminiFlashViewModel,
-    onNavigateHome: () -> Unit,
+    onNavigateToTab: (RolaysDestination) -> Unit,
+    onOpenWorkflowHub: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     NavHost(
@@ -200,14 +263,33 @@ private fun RolaysNavHost(
         exitTransition = { fadeOut(animationSpec = tween(180)) }
     ) {
         composable(RolaysDestination.ENHANCER.route) {
-            EnhancerScreen(viewModel = enhancerViewModel)
+            EnhancerScreen(
+                onSendToSocialAi = { bitmap ->
+                    socialAiViewModel.attachBitmapFromWorkflow(
+                        bitmap = bitmap,
+                        suggestedPrompt = "Buatkan caption & hashtag menarik untuk foto HD ini."
+                    )
+                    onNavigateToTab(RolaysDestination.SOCIAL_CHAT)
+                },
+                viewModel = enhancerViewModel
+            )
         }
         composable(RolaysDestination.DOWNLOADER.route) {
-            DownloaderScreen(viewModel = downloaderViewModel)
+            DownloaderScreen(
+                onSendToSocialAi = { draftPrompt ->
+                    socialAiViewModel.prefillPromptFromWorkflow(draftPrompt)
+                    onNavigateToTab(RolaysDestination.SOCIAL_CHAT)
+                },
+                onSendToEnhancer = { bitmap, title ->
+                    enhancerViewModel.loadBitmapForEnhance(bitmap, title)
+                    onNavigateToTab(RolaysDestination.ENHANCER)
+                },
+                viewModel = downloaderViewModel
+            )
         }
         composable(RolaysDestination.SOCIAL_CHAT.route) {
             SocialAiScreen(
-                onExitToHome = onNavigateHome,
+                onExitToHome = onOpenWorkflowHub,
                 viewModel = socialAiViewModel
             )
         }
