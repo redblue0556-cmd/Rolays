@@ -1,0 +1,6 @@
+{
+  "name": "ROLAYS",
+  "description": "Liquid Glass AI studio for HD photo/video enhancement, watermark-free media downloading, universal social media AI assistant, and dedicated Gemini 3.8 Flash AI workspace.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
