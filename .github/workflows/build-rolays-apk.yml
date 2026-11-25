@@ -93,7 +93,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Build Signed Release APK (when keystore secrets are set)
+      - name: Build Signed Release APK
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
@@ -102,17 +102,29 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "${GITHUB_WORKSPACE}/my-upload-key.jks"
             export KEYSTORE_PATH="${GITHUB_WORKSPACE}/my-upload-key.jks"
-            gradle :app:assembleRelease --no-daemon
-            mkdir -p dist-release
-            cp app/build/outputs/apk/release/app-release.apk dist-release/ROLAYS-release.apk
           else
-            echo "Release signing secrets not configured; skipping release APK."
+            export STORE_PASSWORD="rolays_release_pass"
+            export KEY_PASSWORD="rolays_release_pass"
+            export KEYSTORE_PATH="${GITHUB_WORKSPACE}/ci-release-key.jks"
+            rm -f "$KEYSTORE_PATH"
+            keytool -genkeypair -v \
+              -keystore "$KEYSTORE_PATH" \
+              -storepass "$STORE_PASSWORD" \
+              -alias upload \
+              -keypass "$KEY_PASSWORD" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=ROLAYS Release,O=ROLAYS,C=ID"
           fi
+          gradle :app:assembleRelease --no-daemon
+          mkdir -p dist-release
+          cp app/build/outputs/apk/release/app-release.apk dist-release/ROLAYS-release.apk
 
-      - name: Upload ROLAYS Release APK (if built)
+      - name: Upload ROLAYS Release APK
         uses: actions/upload-artifact@v7
         with:
           name: ROLAYS-release-apk
           path: dist-release/ROLAYS-release.apk
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 30
