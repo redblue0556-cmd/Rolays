@@ -5,8 +5,7 @@ import android.graphics.Bitmap
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.Firebase
-import com.google.firebase.ai.ai
+import com.example.core.GeminiResilience
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,7 +44,11 @@ class DownloaderViewModel : ViewModel() {
     val uiState: StateFlow<DownloaderUiState> = _uiState.asStateFlow()
 
     private val geminiModel by lazy {
-        Firebase.ai.generativeModel("gemini-3.8-flash")
+        GeminiResilience.createModel(GeminiResilience.PRIMARY_FLASH_MODEL)
+    }
+
+    private val fallbackGeminiModel by lazy {
+        GeminiResilience.createModel(GeminiResilience.FALLBACK_FLASH_MODEL)
     }
 
     fun updateUrl(newUrl: String) {
@@ -141,19 +144,21 @@ class DownloaderViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.update { it.copy(isGeneratingAiNote = true, aiCaptionResult = null) }
             try {
-                val response = withTimeout(45_000L) {
-                    geminiModel.generateContent(
-                        """
-                        Analisis konten ${ready.info.platform.displayName} ini dan buat paket siap posting dalam Bahasa Indonesia:
-                        - Judul: ${ready.info.title}
-                        - Kreator: ${ready.info.author}
-                        - Tautan: ${ready.info.originalUrl}
-                        
-                        Berikan:
-                        1. Hook caption menarik (2 variasi)
-                        2. 8 hashtag relevan yang sedang tren
-                        3. Ide repost/komentar interaksi audiens
-                        """.trimIndent()
+                val promptText = """
+                    Analisis konten ${ready.info.platform.displayName} ini dan buat paket siap posting dalam Bahasa Indonesia:
+                    - Judul: ${ready.info.title}
+                    - Kreator: ${ready.info.author}
+                    - Tautan: ${ready.info.originalUrl}
+                    
+                    Berikan:
+                    1. Hook caption menarik (2 variasi)
+                    2. 8 hashtag relevan yang sedang tren
+                    3. Ide repost/komentar interaksi audiens
+                """.trimIndent()
+                val (response, _) = withTimeout(45_000L) {
+                    GeminiResilience.executeWithFlashFallback(
+                        primaryAction = { geminiModel.generateContent(promptText) },
+                        fallbackAction = { fallbackGeminiModel.generateContent(promptText) }
                     )
                 }
                 _uiState.update {
@@ -173,7 +178,7 @@ class DownloaderViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         isGeneratingAiNote = false,
-                        aiCaptionResult = "Gagal membuat saran AI: ${e.localizedMessage ?: "Error"}"
+                        aiCaptionResult = GeminiResilience.formatUserErrorMessage(e, "Gagal membuat saran AI.")
                     )
                 }
             }

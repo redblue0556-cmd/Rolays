@@ -6,14 +6,14 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.core.GeminiResilience
 import com.example.feature.enhancer.ImageEnhancementEngine
-import com.google.firebase.Firebase
 import com.google.firebase.ai.Chat
-import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -82,25 +82,37 @@ class GeminiFlashViewModel : ViewModel() {
 
     private var activeChatSession: Chat? = null
     private var activeConfigKey: String? = null
+    private var activeModelId: String = GeminiResilience.PRIMARY_FLASH_MODEL
 
-    private fun getOrCreateChatSession(): Chat {
+    private fun getOrCreateChatSession(modelNameOverride: String? = null): Chat {
         val state = _uiState.value
         val instruction = state.customSystemInstruction.ifBlank { state.selectedMode.systemPrompt }
-        val configKey = "${state.selectedMode.name}|$instruction"
+        val targetModel = modelNameOverride ?: state.selectedMode.modelId
+        val configKey = "${state.selectedMode.name}|$targetModel|$instruction"
         val existing = activeChatSession
-        if (existing != null && activeConfigKey == configKey) {
+        if (existing != null && activeConfigKey == configKey && modelNameOverride == null) {
             return existing
         }
-        val model = Firebase.ai.generativeModel(
-            modelName = state.selectedMode.modelId,
+        val history = state.entries
+            .drop(1) // Skip static greeting banner
+            .filter { !it.isStreaming && !it.isError && it.text.isNotBlank() }
+            .dropLastWhile { it.isUser } // Exclude just-added pending user turn
+            .map { entry ->
+                content(role = if (entry.isUser) "user" else "model") {
+                    text(entry.text)
+                }
+            }
+        val model = GeminiResilience.createModel(
+            modelName = targetModel,
             generationConfig = generationConfig {
                 temperature = 0.7f
             },
             systemInstruction = content { text(instruction) }
         )
-        return model.startChat().also {
+        return model.startChat(history = history).also {
             activeChatSession = it
             activeConfigKey = configKey
+            activeModelId = targetModel
         }
     }
 
@@ -178,20 +190,59 @@ class GeminiFlashViewModel : ViewModel() {
             val startTime = System.currentTimeMillis()
             val accumulated = StringBuilder()
             try {
-                val chat = getOrCreateChatSession()
                 val payload = content {
                     if (image != null) image(image)
                     text(displayPrompt)
                 }
                 withTimeout(60_000L) {
-                    chat.sendMessageStream(payload).collect { chunk ->
-                        accumulated.append(chunk.text.orEmpty())
-                        updateEntry(
-                            id = assistantId,
-                            text = accumulated.toString(),
-                            isStreaming = true,
-                            latencyMs = null
-                        )
+                    val primaryChat = getOrCreateChatSession()
+                    try {
+                        primaryChat.sendMessageStream(payload).collect { chunk ->
+                            accumulated.append(chunk.text.orEmpty())
+                            updateEntry(
+                                id = assistantId,
+                                text = accumulated.toString(),
+                                isStreaming = true,
+                                latencyMs = null
+                            )
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (primaryErr: Exception) {
+                        if (accumulated.isEmpty() && GeminiResilience.isTransientOverload(primaryErr)) {
+                            Log.w(TAG, "Primary Gemini 3.8 Flash overloaded, retrying then falling back", primaryErr)
+                            delay(650L)
+                            try {
+                                primaryChat.sendMessageStream(payload).collect { chunk ->
+                                    accumulated.append(chunk.text.orEmpty())
+                                    updateEntry(
+                                        id = assistantId,
+                                        text = accumulated.toString(),
+                                        isStreaming = true,
+                                        latencyMs = null
+                                    )
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (retryErr: Exception) {
+                                if (accumulated.isEmpty() && GeminiResilience.isTransientOverload(retryErr)) {
+                                    val fallbackChat = getOrCreateChatSession(GeminiResilience.FALLBACK_FLASH_MODEL)
+                                    fallbackChat.sendMessageStream(payload).collect { chunk ->
+                                        accumulated.append(chunk.text.orEmpty())
+                                        updateEntry(
+                                            id = assistantId,
+                                            text = accumulated.toString(),
+                                            isStreaming = true,
+                                            latencyMs = null
+                                        )
+                                    }
+                                } else {
+                                    throw retryErr
+                                }
+                            }
+                        } else {
+                            throw primaryErr
+                        }
                     }
                 }
                 val elapsed = System.currentTimeMillis() - startTime
@@ -219,7 +270,7 @@ class GeminiFlashViewModel : ViewModel() {
                 Log.e(TAG, "Gemini 3.8 Flash inference failed", e)
                 updateEntry(
                     id = assistantId,
-                    text = e.localizedMessage ?: "Gagal menjalankan inferensi Gemini 3.8 Flash.",
+                    text = GeminiResilience.formatUserErrorMessage(e, "Gagal menjalankan inferensi Gemini 3.8 Flash."),
                     isStreaming = false,
                     latencyMs = null,
                     isError = true

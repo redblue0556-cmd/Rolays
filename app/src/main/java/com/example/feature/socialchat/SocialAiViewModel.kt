@@ -6,12 +6,12 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.core.GeminiResilience
 import com.example.feature.enhancer.ImageEnhancementEngine
-import com.google.firebase.Firebase
-import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.content
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,18 +56,29 @@ class SocialAiViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(SocialAiUiState())
     val uiState: StateFlow<SocialAiUiState> = _uiState.asStateFlow()
 
+    private val socialSystemInstruction by lazy {
+        content {
+            text(
+                "Kamu adalah Asisten AI Universal untuk Media Sosial di aplikasi ROLAYS. " +
+                    "Bantu pengguna membuat konten, caption viral, balasan pesan DM/WhatsApp, skrip TikTok/Reels, " +
+                    "thread X, kalender konten, dan moderasi komunitas di platform spesifik yang dipilih pengguna. " +
+                    "Berikan hasil yang siap salin, kreatif, terstruktur rapi, dan relevan dalam Bahasa Indonesia " +
+                    "(atau bahasa yang diminta pengguna)."
+            )
+        }
+    }
+
     private val model by lazy {
-        Firebase.ai.generativeModel(
-            modelName = "gemini-3.8-flash",
-            systemInstruction = content {
-                text(
-                    "Kamu adalah Asisten AI Universal untuk Media Sosial di aplikasi ROLAYS. " +
-                        "Bantu pengguna membuat konten, caption viral, balasan pesan DM/WhatsApp, skrip TikTok/Reels, " +
-                        "thread X, kalender konten, dan moderasi komunitas di platform spesifik yang dipilih pengguna. " +
-                        "Berikan hasil yang siap salin, kreatif, terstruktur rapi, dan relevan dalam Bahasa Indonesia " +
-                        "(atau bahasa yang diminta pengguna)."
-                )
-            }
+        GeminiResilience.createModel(
+            modelName = GeminiResilience.PRIMARY_FLASH_MODEL,
+            systemInstruction = socialSystemInstruction
+        )
+    }
+
+    private val fallbackModel by lazy {
+        GeminiResilience.createModel(
+            modelName = GeminiResilience.FALLBACK_FLASH_MODEL,
+            systemInstruction = socialSystemInstruction
         )
     }
 
@@ -188,10 +199,38 @@ class SocialAiViewModel : ViewModel() {
                         if (image != null) image(image)
                         text(fullPrompt)
                     }
-                    model.generateContentStream(inputContent).collect { chunk ->
-                        val chunkText = chunk.text.orEmpty()
-                        builder.append(chunkText)
-                        updateAssistantMessage(platform.id, assistantMsgId, builder.toString(), isStreaming = true)
+                    try {
+                        model.generateContentStream(inputContent).collect { chunk ->
+                            val chunkText = chunk.text.orEmpty()
+                            builder.append(chunkText)
+                            updateAssistantMessage(platform.id, assistantMsgId, builder.toString(), isStreaming = true)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (primaryErr: Exception) {
+                        if (builder.isEmpty() && GeminiResilience.isTransientOverload(primaryErr)) {
+                            Log.w(TAG, "Primary model high demand in SocialAi, retrying then falling back", primaryErr)
+                            delay(650L)
+                            try {
+                                model.generateContentStream(inputContent).collect { chunk ->
+                                    builder.append(chunk.text.orEmpty())
+                                    updateAssistantMessage(platform.id, assistantMsgId, builder.toString(), isStreaming = true)
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (retryErr: Exception) {
+                                if (builder.isEmpty() && GeminiResilience.isTransientOverload(retryErr)) {
+                                    fallbackModel.generateContentStream(inputContent).collect { chunk ->
+                                        builder.append(chunk.text.orEmpty())
+                                        updateAssistantMessage(platform.id, assistantMsgId, builder.toString(), isStreaming = true)
+                                    }
+                                } else {
+                                    throw retryErr
+                                }
+                            }
+                        } else {
+                            throw primaryErr
+                        }
                     }
                 }
                 val finalText = builder.toString().ifBlank {
@@ -214,7 +253,7 @@ class SocialAiViewModel : ViewModel() {
                 updateAssistantMessage(
                     platform.id,
                     assistantMsgId,
-                    e.localizedMessage ?: "Gagal menghubungi asisten AI.",
+                    GeminiResilience.formatUserErrorMessage(e, "Gagal menghubungi asisten AI."),
                     isStreaming = false,
                     isError = true
                 )

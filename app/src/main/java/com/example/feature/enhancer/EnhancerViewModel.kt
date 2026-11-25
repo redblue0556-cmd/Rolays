@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.R
+import com.example.core.GeminiResilience
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.ImagePart
@@ -48,13 +49,24 @@ class EnhancerViewModel : ViewModel() {
         )
     )
 
+    private val analyzerConfig by lazy {
+        generationConfig {
+            responseMimeType = "application/json"
+            responseSchema = analysisSchema
+        }
+    }
+
     private val analyzerModel by lazy {
-        Firebase.ai.generativeModel(
-            modelName = "gemini-3.8-flash",
-            generationConfig = generationConfig {
-                responseMimeType = "application/json"
-                responseSchema = analysisSchema
-            }
+        GeminiResilience.createModel(
+            modelName = GeminiResilience.PRIMARY_FLASH_MODEL,
+            generationConfig = analyzerConfig
+        )
+    }
+
+    private val fallbackAnalyzerModel by lazy {
+        GeminiResilience.createModel(
+            modelName = GeminiResilience.FALLBACK_FLASH_MODEL,
+            generationConfig = analyzerConfig
         )
     }
 
@@ -202,16 +214,18 @@ class EnhancerViewModel : ViewModel() {
             _uiState.update { it.copy(aiState = AiEnhanceState.Analyzing) }
             try {
                 val analysisBitmap = ImageEnhancementEngine.compressForAiAnalysis(current)
-                val response = withTimeout(45_000L) {
-                    analyzerModel.generateContent(
-                        content {
-                            image(analysisBitmap)
-                            text(
-                                "Analisis pencahayaan, ketajaman, warna, dan kontras gambar ini. " +
-                                    "Berikan parameter peningkatan kualitas HD yang natural, jernih, dan estetik dalam format JSON. " +
-                                    "Tulis ringkasan singkat (maksimal 18 kata) dalam Bahasa Indonesia."
-                            )
-                        }
+                val promptContent = content {
+                    image(analysisBitmap)
+                    text(
+                        "Analisis pencahayaan, ketajaman, warna, dan kontras gambar ini. " +
+                            "Berikan parameter peningkatan kualitas HD yang natural, jernih, dan estetik dalam format JSON. " +
+                            "Tulis ringkasan singkat (maksimal 18 kata) dalam Bahasa Indonesia."
+                    )
+                }
+                val (response, _) = withTimeout(45_000L) {
+                    GeminiResilience.executeWithFlashFallback(
+                        primaryAction = { analyzerModel.generateContent(promptContent) },
+                        fallbackAction = { fallbackAnalyzerModel.generateContent(promptContent) }
                     )
                 }
                 val jsonText = response.text ?: throw IllegalStateException("Respons AI kosong.")
@@ -248,7 +262,7 @@ class EnhancerViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         aiState = AiEnhanceState.Error(
-                            e.localizedMessage ?: "Gagal menganalisis gambar dengan Gemini AI."
+                            GeminiResilience.formatUserErrorMessage(e, "Gagal menganalisis gambar dengan Gemini AI.")
                         )
                     )
                 }
