@@ -266,7 +266,7 @@ fun InteractiveLiquidGlassNavBar(
                 .onSizeChanged { barWidthPx = it.width.toFloat() }
                 .pointerInput(destinations.size) {
                     val touchSlop = viewConfiguration.touchSlop
-                    val longPressDelayMs = 160L
+                    val longPressDelayMs = 240L
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         isPressing = true
@@ -275,24 +275,27 @@ fun InteractiveLiquidGlassNavBar(
                         var dragging = false
                         var prevX = startX
 
+                        val initialIdx = if (barWidthPx > 0f) {
+                            (startX / (barWidthPx / destinations.size)).toInt()
+                                .coerceIn(0, destinations.lastIndex)
+                        } else {
+                            selectedIndex
+                        }
+                        hoveredIndex = initialIdx
+
                         // Timer-triggered press-and-hold activation even when finger stays still
                         val holdTriggerJob = coroutineScope.launch {
                             delay(longPressDelayMs)
                             if (isPressing && !dragging) {
                                 dragging = true
+                                hoveredIndex = initialIdx
+                                lastHapticIndex = initialIdx
                                 isFluidDragging = true
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                if (barWidthPx > 0f) {
-                                    val segmentWidth = barWidthPx / destinations.size
-                                    val initialIdx = (startX / segmentWidth).toInt()
-                                        .coerceIn(0, destinations.lastIndex)
-                                    hoveredIndex = initialIdx
-                                    lastHapticIndex = initialIdx
-                                    dropletPosition.animateTo(
-                                        initialIdx.toFloat(),
-                                        spring(dampingRatio = 0.6f, stiffness = 450f)
-                                    )
-                                }
+                                dropletPosition.animateTo(
+                                    initialIdx.toFloat(),
+                                    spring(dampingRatio = 0.6f, stiffness = 450f)
+                                )
                             }
                         }
 
@@ -356,7 +359,7 @@ fun InteractiveLiquidGlassNavBar(
 
                         if (dragging) {
                             isFluidDragging = false
-                            val targetIdx = dropletPosition.value.roundToInt().coerceIn(0, destinations.lastIndex)
+                            val targetIdx = hoveredIndex.coerceIn(0, destinations.lastIndex)
                             onDestinationSelected(destinations[targetIdx])
                             coroutineScope.launch {
                                 barVerticalShift.animateTo(

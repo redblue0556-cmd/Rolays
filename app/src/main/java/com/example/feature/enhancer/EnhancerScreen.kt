@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -104,6 +105,14 @@ fun EnhancerScreen(
         }
     }
 
+    val fallbackDocPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.onMediaSelected(context, uri, state.mediaType)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -144,7 +153,14 @@ fun EnhancerScreen(
                         } else {
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
                         }
-                        mediaPicker.launch(req)
+                        runCatching { mediaPicker.launch(req) }.onFailure {
+                            val mime = if (state.mediaType == EnhancerMediaType.PHOTO) {
+                                arrayOf("image/*")
+                            } else {
+                                arrayOf("video/*")
+                            }
+                            fallbackDocPicker.launch(mime)
+                        }
                     },
                     modifier = Modifier
                         .minimumInteractiveComponentSize()
@@ -258,6 +274,37 @@ fun EnhancerScreen(
                         splitRatio = sliderSplit,
                         onSplitChange = { sliderSplit = it }
                     )
+
+                    // Explicit interactive Before/After scrub bar below image for effortless control
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Sebelum",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = glass.textSecondary
+                        )
+                        Slider(
+                            value = sliderSplit,
+                            onValueChange = { sliderSplit = it },
+                            valueRange = 0.05f..0.95f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = glass.cyanAccent,
+                                activeTrackColor = glass.cyanAccent,
+                                inactiveTrackColor = Color.White.copy(alpha = 0.16f)
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("before_after_scrub_bar")
+                        )
+                        Text(
+                            text = "Sesudah",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = glass.cyanAccent
+                        )
+                    }
 
                     // Optional real video player preview when user picks a video
                     if (state.mediaType == EnhancerMediaType.VIDEO && state.selectedUri != null) {
@@ -585,6 +632,12 @@ private fun BeforeAfterComparisonCard(
             .aspectRatio(4f / 3f)
             .clip(RoundedCornerShape(20.dp))
             .background(Color(0xFF0A0F1F))
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    val newRatio = (offset.x / size.width.toFloat()).coerceIn(0.05f, 0.95f)
+                    onSplitChange(newRatio)
+                }
+            }
             .pointerInput(Unit) {
                 detectHorizontalDragGestures { change, _ ->
                     change.consume()
