@@ -1,8 +1,8 @@
 package com.example.ui
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,16 +16,21 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import com.example.feature.downloader.DownloaderScreen
 import com.example.feature.downloader.DownloaderViewModel
 import com.example.feature.enhancer.EnhancerScreen
@@ -40,19 +45,37 @@ import com.example.ui.components.LiquidGlassNavRail
 import com.example.ui.components.RolaysDestination
 import com.example.ui.theme.LocalLiquidGlassPalette
 
+/**
+ * Main Jetpack Compose Navigation Shell for ROLAYS.
+ * Uses Navigation Compose (NavHost + NavController) with a floating frosted Liquid Glass
+ * bottom navigation bar on Compact/Medium viewports and a Liquid Glass NavigationRail
+ * on Expanded tablet/foldable screens.
+ */
 @Composable
 fun RolaysApp() {
-    var selectedDestination by rememberSaveable { mutableStateOf(RolaysDestination.ENHANCER) }
+    val navController = rememberNavController()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
+    val selectedDestination = RolaysDestination.entries.firstOrNull { it.route == currentRoute }
+        ?: RolaysDestination.ENHANCER
     val glass = LocalLiquidGlassPalette.current
 
-    // Keep feature ViewModels scoped at app level so tab switching preserves user work seamlessly
+    // Keep feature ViewModels scoped to the shell so switching tabs preserves state
     val enhancerViewModel: EnhancerViewModel = viewModel()
     val downloaderViewModel: DownloaderViewModel = viewModel()
     val socialAiViewModel: SocialAiViewModel = viewModel()
     val geminiFlashViewModel: GeminiFlashViewModel = viewModel()
 
-    BackHandler(enabled = selectedDestination != RolaysDestination.ENHANCER) {
-        selectedDestination = RolaysDestination.ENHANCER
+    val navigateToDestination: (RolaysDestination) -> Unit = { target ->
+        if (target.route != currentRoute) {
+            navController.navigate(target.route) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
     }
 
     val ambientAccent = when (selectedDestination) {
@@ -75,44 +98,56 @@ fun RolaysApp() {
             ) {
                 LiquidGlassNavRail(
                     selectedDestination = selectedDestination,
-                    onDestinationSelected = { selectedDestination = it }
+                    onDestinationSelected = navigateToDestination
                 )
 
                 Column(modifier = Modifier.weight(1f).fillMaxSize()) {
-                    RolaysTopBrandBar(selectedDestination = selectedDestination)
-                    RolaysContentSwitcher(
-                        selectedDestination = selectedDestination,
+                    if (selectedDestination != RolaysDestination.SOCIAL_CHAT) {
+                        RolaysTopBrandBar(selectedDestination = selectedDestination)
+                    }
+                    RolaysNavHost(
+                        navController = navController,
                         enhancerViewModel = enhancerViewModel,
                         downloaderViewModel = downloaderViewModel,
                         socialAiViewModel = socialAiViewModel,
                         geminiFlashViewModel = geminiFlashViewModel,
+                        onNavigateHome = { navigateToDestination(RolaysDestination.ENHANCER) },
                         modifier = Modifier.weight(1f)
                     )
                 }
             }
         } else {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .windowInsetsPadding(WindowInsets.statusBars)
-                ) {
-                    RolaysTopBrandBar(selectedDestination = selectedDestination)
-                    RolaysContentSwitcher(
+            Scaffold(
+                containerColor = Color.Transparent,
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                bottomBar = {
+                    InteractiveLiquidGlassNavBar(
                         selectedDestination = selectedDestination,
-                        enhancerViewModel = enhancerViewModel,
-                        downloaderViewModel = downloaderViewModel,
-                        socialAiViewModel = socialAiViewModel,
-                        geminiFlashViewModel = geminiFlashViewModel,
-                        modifier = Modifier.weight(1f)
+                        onDestinationSelected = navigateToDestination
                     )
                 }
-
-                InteractiveLiquidGlassNavBar(
-                    selectedDestination = selectedDestination,
-                    onDestinationSelected = { selectedDestination = it },
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
+            ) { _ ->
+                // Content renders full-bleed behind the floating frosted Liquid Glass bar
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                    ) {
+                        if (selectedDestination != RolaysDestination.SOCIAL_CHAT) {
+                            RolaysTopBrandBar(selectedDestination = selectedDestination)
+                        }
+                        RolaysNavHost(
+                            navController = navController,
+                            enhancerViewModel = enhancerViewModel,
+                            downloaderViewModel = downloaderViewModel,
+                            socialAiViewModel = socialAiViewModel,
+                            geminiFlashViewModel = geminiFlashViewModel,
+                            onNavigateHome = { navigateToDestination(RolaysDestination.ENHANCER) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             }
         }
     }
@@ -148,25 +183,36 @@ private fun RolaysTopBrandBar(
 }
 
 @Composable
-private fun RolaysContentSwitcher(
-    selectedDestination: RolaysDestination,
+private fun RolaysNavHost(
+    navController: NavHostController,
     enhancerViewModel: EnhancerViewModel,
     downloaderViewModel: DownloaderViewModel,
     socialAiViewModel: SocialAiViewModel,
     geminiFlashViewModel: GeminiFlashViewModel,
+    onNavigateHome: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Crossfade(
-        targetState = selectedDestination,
-        animationSpec = tween(durationMillis = 220),
+    NavHost(
+        navController = navController,
+        startDestination = RolaysDestination.ENHANCER.route,
         modifier = modifier,
-        label = "rolays_tab_crossfade"
-    ) { destination ->
-        when (destination) {
-            RolaysDestination.ENHANCER -> EnhancerScreen(viewModel = enhancerViewModel)
-            RolaysDestination.DOWNLOADER -> DownloaderScreen(viewModel = downloaderViewModel)
-            RolaysDestination.SOCIAL_CHAT -> SocialAiScreen(viewModel = socialAiViewModel)
-            RolaysDestination.GEMINI_FLASH -> GeminiFlashScreen(viewModel = geminiFlashViewModel)
+        enterTransition = { fadeIn(animationSpec = tween(220)) },
+        exitTransition = { fadeOut(animationSpec = tween(180)) }
+    ) {
+        composable(RolaysDestination.ENHANCER.route) {
+            EnhancerScreen(viewModel = enhancerViewModel)
+        }
+        composable(RolaysDestination.DOWNLOADER.route) {
+            DownloaderScreen(viewModel = downloaderViewModel)
+        }
+        composable(RolaysDestination.SOCIAL_CHAT.route) {
+            SocialAiScreen(
+                onExitToHome = onNavigateHome,
+                viewModel = socialAiViewModel
+            )
+        }
+        composable(RolaysDestination.GEMINI_FLASH.route) {
+            GeminiFlashScreen(viewModel = geminiFlashViewModel)
         }
     }
 }

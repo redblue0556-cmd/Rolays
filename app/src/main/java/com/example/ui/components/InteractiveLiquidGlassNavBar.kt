@@ -1,11 +1,17 @@
 package com.example.ui.components
 
 import android.os.Build
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,10 +22,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -77,6 +85,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.LocalLiquidGlassPalette
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -91,8 +100,8 @@ enum class RolaysDestination(
 ) {
     ENHANCER(
         route = "enhancer",
-        label = "HD Enhancer",
-        shortLabel = "Enhancer",
+        label = "Enhance HD",
+        shortLabel = "Enhance HD",
         selectedIcon = Icons.Filled.AutoFixHigh,
         unselectedIcon = Icons.Outlined.AutoFixHigh,
         testTag = "nav_tab_enhancer"
@@ -100,23 +109,23 @@ enum class RolaysDestination(
     DOWNLOADER(
         route = "downloader",
         label = "Downloader",
-        shortLabel = "Unduh",
+        shortLabel = "Downloader",
         selectedIcon = Icons.Filled.Download,
         unselectedIcon = Icons.Outlined.Download,
         testTag = "nav_tab_downloader"
     ),
     SOCIAL_CHAT(
         route = "social_chat",
-        label = "Social AI",
-        shortLabel = "Sosial AI",
+        label = "AI Chatbot",
+        shortLabel = "AI Chatbot",
         selectedIcon = Icons.Filled.Forum,
         unselectedIcon = Icons.Outlined.Forum,
         testTag = "nav_tab_social_ai"
     ),
     GEMINI_FLASH(
         route = "gemini_flash",
-        label = "Gemini 3.8",
-        shortLabel = "3.8 Flash",
+        label = "Gemini 3.8 Flash",
+        shortLabel = "Gemini 3.8",
         selectedIcon = Icons.Filled.AutoAwesome,
         unselectedIcon = Icons.Outlined.AutoAwesome,
         testTag = "nav_tab_gemini_flash"
@@ -124,9 +133,15 @@ enum class RolaysDestination(
 }
 
 /**
- * Interactive Liquid Glass Bottom Bar with press-and-hold + fluid drag gesture physics.
- * Users can tap any tab OR press-and-hold and slide their finger across the bar to move
- * the elastic refractive droplet indicator in real time.
+ * Interactive Liquid Glass (Frosted Glass) Bottom Navigation Bar with fluid
+ * press-and-hold + drag interaction logic.
+ *
+ * Gesture contract:
+ * - Quick tap: immediately navigates to the tapped destination with a spring-animated droplet.
+ * - Press-and-hold (>= 160ms, even while motionless) OR horizontal drag (> touchSlop):
+ *   activates Fluid Drag Mode, swelling the refractive glass pill, emitting haptic ticks on tab
+ *   crossings, stretching the droplet proportional to pointer velocity, and applying elastic
+ *   edge resistance + vertical pull before snapping to the nearest tab on release.
  */
 @Composable
 fun InteractiveLiquidGlassNavBar(
@@ -146,12 +161,16 @@ fun InteractiveLiquidGlassNavBar(
     var isPressing by remember { mutableStateOf(false) }
     var dragVelocityStretch by remember { mutableFloatStateOf(0f) }
     var lastHapticIndex by remember { mutableIntStateOf(selectedIndex) }
+    var hoveredIndex by remember { mutableIntStateOf(selectedIndex) }
 
     val dropletPosition = remember { Animatable(selectedIndex.toFloat()) }
     val barVerticalShift = remember { Animatable(0f) }
+    val barHorizontalShift = remember { Animatable(0f) }
 
     LaunchedEffect(selectedIndex, isFluidDragging) {
         if (!isFluidDragging) {
+            hoveredIndex = selectedIndex
+            lastHapticIndex = selectedIndex
             dropletPosition.animateTo(
                 targetValue = selectedIndex.toFloat(),
                 animationSpec = spring(
@@ -164,17 +183,17 @@ fun InteractiveLiquidGlassNavBar(
 
     val barScale by animateFloatAsState(
         targetValue = when {
-            isFluidDragging -> 1.035f
+            isFluidDragging -> 1.04f
             isPressing -> 0.985f
             else -> 1f
         },
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f),
+        animationSpec = spring(dampingRatio = 0.48f, stiffness = 380f),
         label = "bar_scale"
     )
 
     val dropletScale by animateFloatAsState(
-        targetValue = if (isFluidDragging) 1.10f else 1.0f,
-        animationSpec = spring(dampingRatio = 0.45f, stiffness = 360f),
+        targetValue = if (isFluidDragging) 1.12f else 1.0f,
+        animationSpec = spring(dampingRatio = 0.44f, stiffness = 360f),
         label = "droplet_scale"
     )
 
@@ -185,13 +204,49 @@ fun InteractiveLiquidGlassNavBar(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Floating destination indicator chip visible during fluid drag-and-hold
+        AnimatedVisibility(
+            visible = isFluidDragging,
+            enter = fadeIn() + scaleIn(initialScale = 0.88f),
+            exit = fadeOut() + scaleOut(targetScale = 0.90f)
+        ) {
+            val previewDest = destinations[hoveredIndex.coerceIn(0, destinations.lastIndex)]
+            Box(
+                modifier = Modifier
+                    .padding(bottom = 8.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color(0xCC0D1730),
+                                Color(0xCC16254A)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.linearGradient(
+                            listOf(glass.cyanAccent.copy(alpha = 0.75f), glass.violetAccent.copy(alpha = 0.5f))
+                        ),
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = previewDest.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = glass.cyanAccent
+                )
+            }
+        }
+
         val barShape = RoundedCornerShape(32.dp)
         val borderBrush = Brush.linearGradient(
             colors = listOf(
-                if (isFluidDragging) glass.cyanAccent.copy(alpha = 0.85f) else glass.borderBright,
-                glass.cyanAccent.copy(alpha = 0.35f),
+                if (isFluidDragging) glass.cyanAccent.copy(alpha = 0.90f) else glass.borderBright,
+                glass.cyanAccent.copy(alpha = 0.40f),
                 glass.borderSoft,
-                glass.violetAccent.copy(alpha = 0.40f)
+                glass.violetAccent.copy(alpha = 0.45f)
             )
         )
 
@@ -199,33 +254,47 @@ fun InteractiveLiquidGlassNavBar(
             modifier = Modifier
                 .widthIn(max = 560.dp)
                 .fillMaxWidth()
-                .height(72.dp)
-                .offset { IntOffset(0, barVerticalShift.value.roundToInt()) }
+                .height(74.dp)
+                .offset {
+                    IntOffset(
+                        x = barHorizontalShift.value.roundToInt(),
+                        y = barVerticalShift.value.roundToInt()
+                    )
+                }
                 .scale(barScale)
                 .clip(barShape)
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.16f),
-                            Color(0xFF0E1730).copy(alpha = 0.84f),
-                            Color(0xFF090F22).copy(alpha = 0.92f)
-                        )
-                    ),
-                    shape = barShape
-                )
-                .border(width = if (isFluidDragging) 1.5.dp else 1.dp, brush = borderBrush, shape = barShape)
                 .onSizeChanged { barWidthPx = it.width.toFloat() }
                 .pointerInput(destinations.size) {
                     val touchSlop = viewConfiguration.touchSlop
-                    val longPressMs = 170L
+                    val longPressDelayMs = 160L
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         isPressing = true
-                        val startTime = System.currentTimeMillis()
                         val startX = down.position.x
                         val startY = down.position.y
                         var dragging = false
                         var prevX = startX
+
+                        // Timer-triggered press-and-hold activation even when finger stays still
+                        val holdTriggerJob = coroutineScope.launch {
+                            delay(longPressDelayMs)
+                            if (isPressing && !dragging) {
+                                dragging = true
+                                isFluidDragging = true
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (barWidthPx > 0f) {
+                                    val segmentWidth = barWidthPx / destinations.size
+                                    val initialIdx = (startX / segmentWidth).toInt()
+                                        .coerceIn(0, destinations.lastIndex)
+                                    hoveredIndex = initialIdx
+                                    lastHapticIndex = initialIdx
+                                    dropletPosition.animateTo(
+                                        initialIdx.toFloat(),
+                                        spring(dampingRatio = 0.6f, stiffness = 450f)
+                                    )
+                                }
+                            }
+                        }
 
                         while (true) {
                             val event = awaitPointerEvent()
@@ -237,10 +306,10 @@ fun InteractiveLiquidGlassNavBar(
 
                             val dxTotal = abs(change.position.x - startX)
                             val dyTotal = change.position.y - startY
-                            val elapsed = System.currentTimeMillis() - startTime
 
-                            if (!dragging && (elapsed >= longPressMs || dxTotal > touchSlop)) {
+                            if (!dragging && dxTotal > touchSlop) {
                                 dragging = true
+                                holdTriggerJob.cancel()
                                 isFluidDragging = true
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             }
@@ -248,28 +317,40 @@ fun InteractiveLiquidGlassNavBar(
                             if (dragging && barWidthPx > 0f) {
                                 change.consume()
                                 val segmentWidth = barWidthPx / destinations.size
-                                val rawFraction = ((change.position.x / segmentWidth) - 0.5f)
-                                    .coerceIn(-0.18f, (destinations.size - 1) + 0.18f)
+                                val unclamped = (change.position.x / segmentWidth) - 0.5f
+                                val rawFraction = unclamped.coerceIn(-0.16f, (destinations.size - 1) + 0.16f)
+
+                                // Elastic edge pull resistance if user drags past left/right bounds
+                                val overscrollX = when {
+                                    unclamped < 0f -> (unclamped * 24f).coerceAtLeast(-22f)
+                                    unclamped > destinations.lastIndex ->
+                                        ((unclamped - destinations.lastIndex) * 24f).coerceAtMost(22f)
+                                    else -> 0f
+                                }
+
                                 val deltaX = change.position.x - prevX
                                 prevX = change.position.x
-                                dragVelocityStretch = (abs(deltaX) / 22f).coerceIn(0f, 0.28f)
+                                dragVelocityStretch = (abs(deltaX) / 20f).coerceIn(0f, 0.30f)
 
                                 // Elastic vertical lift/pull feedback while holding & dragging
-                                val dampedY = (dyTotal * 0.18f).coerceIn(-18f, 14f)
+                                val dampedY = (dyTotal * 0.20f).coerceIn(-20f, 14f)
 
                                 coroutineScope.launch {
                                     dropletPosition.snapTo(rawFraction)
                                     barVerticalShift.snapTo(dampedY)
+                                    barHorizontalShift.snapTo(overscrollX)
                                 }
 
-                                val hoveredIdx = rawFraction.roundToInt().coerceIn(0, destinations.lastIndex)
-                                if (hoveredIdx != lastHapticIndex) {
-                                    lastHapticIndex = hoveredIdx
+                                val currentHover = rawFraction.roundToInt().coerceIn(0, destinations.lastIndex)
+                                hoveredIndex = currentHover
+                                if (currentHover != lastHapticIndex) {
+                                    lastHapticIndex = currentHover
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 }
                             }
                         }
 
+                        holdTriggerJob.cancel()
                         isPressing = false
                         dragVelocityStretch = 0f
 
@@ -280,13 +361,19 @@ fun InteractiveLiquidGlassNavBar(
                             coroutineScope.launch {
                                 barVerticalShift.animateTo(
                                     0f,
-                                    spring(dampingRatio = 0.45f, stiffness = 420f)
+                                    spring(dampingRatio = 0.44f, stiffness = 400f)
+                                )
+                            }
+                            coroutineScope.launch {
+                                barHorizontalShift.animateTo(
+                                    0f,
+                                    spring(dampingRatio = 0.44f, stiffness = 400f)
                                 )
                             }
                             coroutineScope.launch {
                                 dropletPosition.animateTo(
                                     targetIdx.toFloat(),
-                                    spring(dampingRatio = 0.52f, stiffness = 380f)
+                                    spring(dampingRatio = 0.50f, stiffness = 360f)
                                 )
                             }
                         } else if (barWidthPx > 0f) {
@@ -303,9 +390,69 @@ fun InteractiveLiquidGlassNavBar(
             val slotWidthDp = with(density) { slotWidthPx.toDp() }
             val currentFrac = dropletPosition.value
             val stretchFactor = 1f + dragVelocityStretch
-
-            // Subtle ambient blur layer behind the active liquid droplet
             val dropletCenterX = (currentFrac + 0.5f) * slotWidthPx
+
+            // Layer 1: Frosted Glass Backdrop Blur + Refractive Caustic Sheen
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .then(
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            Modifier.blur(22.dp)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                glass.cyanAccent.copy(alpha = 0.16f),
+                                Color(0xFF0E1834).copy(alpha = 0.72f),
+                                glass.violetAccent.copy(alpha = 0.14f)
+                            )
+                        )
+                    )
+            )
+
+            // Layer 2: Translucent Liquid Glass Overlay & Top Specular Edge
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.18f),
+                            Color(0xFF0A1124).copy(alpha = 0.56f),
+                            Color(0xFF060B18).copy(alpha = 0.76f)
+                        )
+                    ),
+                    cornerRadius = CornerRadius(32.dp.toPx(), 32.dp.toPx())
+                )
+                // Dynamic caustic light follow behind active droplet
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            glass.cyanAccent.copy(alpha = if (isFluidDragging) 0.34f else 0.18f),
+                            Color.Transparent
+                        ),
+                        center = Offset(dropletCenterX, size.height * 0.5f),
+                        radius = slotWidthPx * 0.9f
+                    ),
+                    center = Offset(dropletCenterX, size.height * 0.5f),
+                    radius = slotWidthPx * 0.9f
+                )
+            }
+
+            // Layer 3: Outer Glass Specular Rim Border
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .border(
+                        width = if (isFluidDragging) 1.5.dp else 1.dp,
+                        brush = borderBrush,
+                        shape = barShape
+                    )
+            )
+
+            // Layer 4: Elastic Morphing Liquid Droplet Indicator
             Box(
                 modifier = Modifier
                     .offset {
@@ -319,15 +466,15 @@ fun InteractiveLiquidGlassNavBar(
                     .padding(6.dp)
                     .graphicsLayer {
                         scaleX = dropletScale * stretchFactor
-                        scaleY = dropletScale * (1f - dragVelocityStretch * 0.25f)
+                        scaleY = dropletScale * (1f - dragVelocityStretch * 0.24f)
                     }
                     .clip(RoundedCornerShape(26.dp))
                     .background(
                         brush = Brush.linearGradient(
                             colors = listOf(
-                                glass.cyanAccent.copy(alpha = if (isFluidDragging) 0.42f else 0.28f),
-                                glass.blueAccent.copy(alpha = 0.24f),
-                                glass.violetAccent.copy(alpha = if (isFluidDragging) 0.36f else 0.24f)
+                                glass.cyanAccent.copy(alpha = if (isFluidDragging) 0.44f else 0.28f),
+                                glass.blueAccent.copy(alpha = 0.26f),
+                                glass.violetAccent.copy(alpha = if (isFluidDragging) 0.38f else 0.24f)
                             )
                         )
                     )
@@ -335,8 +482,8 @@ fun InteractiveLiquidGlassNavBar(
                         width = 1.dp,
                         brush = Brush.verticalGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = 0.62f),
-                                glass.cyanAccent.copy(alpha = 0.25f)
+                                Color.White.copy(alpha = 0.68f),
+                                glass.cyanAccent.copy(alpha = 0.26f)
                             )
                         ),
                         shape = RoundedCornerShape(26.dp)
@@ -345,48 +492,18 @@ fun InteractiveLiquidGlassNavBar(
                         drawRoundRect(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    Color.White.copy(alpha = 0.25f),
+                                    Color.White.copy(alpha = 0.28f),
                                     Color.Transparent
                                 ),
                                 center = Offset(size.width * 0.35f, size.height * 0.2f),
-                                radius = size.width * 0.7f
+                                radius = size.width * 0.72f
                             ),
                             cornerRadius = CornerRadius(26.dp.toPx(), 26.dp.toPx())
                         )
                     }
             )
 
-            // Refraction glow trail when dragging
-            if (isFluidDragging) {
-                Box(
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                x = (dropletCenterX - slotWidthPx * 0.45f).roundToInt(),
-                                y = 4
-                            )
-                        }
-                        .width(slotWidthDp * 0.9f)
-                        .height(58.dp)
-                        .then(
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                Modifier.blur(16.dp)
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    glass.cyanAccent.copy(alpha = 0.28f),
-                                    Color.Transparent
-                                )
-                            ),
-                            shape = CircleShape
-                        )
-                )
-            }
-
+            // Layer 5: Destination Icons & Labels
             Row(
                 modifier = Modifier.fillMaxWidth().fillMaxHeight(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -395,10 +512,10 @@ fun InteractiveLiquidGlassNavBar(
                 destinations.forEachIndexed { index, dest ->
                     val distance = abs(currentFrac - index)
                     val activeRatio = (1f - distance).coerceIn(0f, 1f)
-                    val isSelected = index == selectedIndex && !isFluidDragging ||
-                        (isFluidDragging && distance < 0.5f)
+                    val isSelected = (index == selectedIndex && !isFluidDragging) ||
+                        (isFluidDragging && index == hoveredIndex)
                     val tint by animateColorAsState(
-                        targetValue = if (isSelected) glass.textPrimary else glass.textSecondary.copy(alpha = 0.72f),
+                        targetValue = if (isSelected) glass.textPrimary else glass.textSecondary.copy(alpha = 0.74f),
                         label = "tab_tint_${dest.route}"
                     )
                     val isGeminiTab = dest == RolaysDestination.GEMINI_FLASH
@@ -416,8 +533,7 @@ fun InteractiveLiquidGlassNavBar(
                             imageVector = if (isSelected) dest.selectedIcon else dest.unselectedIcon,
                             contentDescription = dest.label,
                             tint = if (isSelected && isGeminiTab) glass.cyanAccent else tint,
-                            modifier = Modifier
-                                .size((21f + 3f * activeRatio).dp)
+                            modifier = Modifier.size((21f + 3f * activeRatio).dp)
                         )
                         Spacer(modifier = Modifier.height(3.dp))
                         Text(
@@ -456,7 +572,7 @@ fun LiquidGlassNavRail(
         shape = RoundedCornerShape(30.dp),
         cornerRadiusDp = 30.dp,
         elevated = true,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 20.dp, horizontal = 8.dp)
+        contentPadding = PaddingValues(vertical = 20.dp, horizontal = 8.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxHeight(),

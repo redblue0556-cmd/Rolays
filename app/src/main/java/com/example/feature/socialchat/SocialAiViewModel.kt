@@ -22,14 +22,6 @@ import java.util.UUID
 
 private const val TAG = "SocialAiViewModel"
 
-enum class SocialPlatform(val title: String, val roleHint: String) {
-    ALL("Semua", "multi-platform media sosial (Instagram, TikTok, WhatsApp, X, YouTube, LinkedIn)"),
-    INSTAGRAM("Instagram", "Instagram Reels, Carousel, Story, Bio & DM"),
-    TIKTOK("TikTok", "TikTok FYP hook, skrip video pendek, & balasan komentar"),
-    WHATSAPP("WhatsApp", "WhatsApp chat personal, bisnis, broadcast & auto-reply sopan"),
-    X_TWITTER("X / Twitter", "Thread X, opini ringkas viral, & reply cerdas")
-}
-
 data class SocialChatMessage(
     val id: String = UUID.randomUUID().toString(),
     val isUser: Boolean,
@@ -41,17 +33,23 @@ data class SocialChatMessage(
 )
 
 data class SocialAiUiState(
-    val selectedPlatform: SocialPlatform = SocialPlatform.ALL,
-    val messages: List<SocialChatMessage> = listOf(
-        SocialChatMessage(
-            isUser = false,
-            text = "Halo! Saya Asisten AI Media Sosial ROLAYS. Pilih platform (Instagram, TikTok, WhatsApp, X) atau langsung perintahkan saya membuat caption, membalas DM, merangkai thread, atau menyusun skrip konten!"
-        )
-    ),
+    val isPickerVisible: Boolean = true,
+    val searchQuery: String = "",
+    val showExtraPlatforms: Boolean = false,
+    val selectedPlatform: SocialPlatformSpec = SocialPlatformCatalog.universalPlatform,
+    val conversationsByPlatform: Map<String, List<SocialChatMessage>> = emptyMap(),
     val inputText: String = "",
     val attachedBitmap: Bitmap? = null,
     val isGenerating: Boolean = false
-)
+) {
+    val activeMessages: List<SocialChatMessage>
+        get() = conversationsByPlatform[selectedPlatform.id] ?: listOf(
+            SocialChatMessage(
+                isUser = false,
+                text = "Halo! Asisten ${selectedPlatform.title} siap membantu (${selectedPlatform.subtitle}). Ketik perintah Anda atau pilih templat cepat di atas!"
+            )
+        )
+}
 
 class SocialAiViewModel : ViewModel() {
 
@@ -63,9 +61,9 @@ class SocialAiViewModel : ViewModel() {
             modelName = "gemini-3.8-flash",
             systemInstruction = content {
                 text(
-                    "Kamu adalah Asisten AI Universal untuk Media Sosial di dalam aplikasi ROLAYS. " +
+                    "Kamu adalah Asisten AI Universal untuk Media Sosial di aplikasi ROLAYS. " +
                         "Bantu pengguna membuat konten, caption viral, balasan pesan DM/WhatsApp, skrip TikTok/Reels, " +
-                        "thread X, kalender konten, dan strategi engagement di semua platform media sosial. " +
+                        "thread X, kalender konten, dan moderasi komunitas di platform spesifik yang dipilih pengguna. " +
                         "Berikan hasil yang siap salin, kreatif, terstruktur rapi, dan relevan dalam Bahasa Indonesia " +
                         "(atau bahasa yang diminta pengguna)."
                 )
@@ -73,8 +71,25 @@ class SocialAiViewModel : ViewModel() {
         )
     }
 
-    fun selectPlatform(platform: SocialPlatform) {
-        _uiState.update { it.copy(selectedPlatform = platform) }
+    fun updateSearchQuery(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
+    }
+
+    fun toggleExtraPlatforms() {
+        _uiState.update { it.copy(showExtraPlatforms = !it.showExtraPlatforms) }
+    }
+
+    fun openPlatformChat(platform: SocialPlatformSpec) {
+        _uiState.update {
+            it.copy(
+                selectedPlatform = platform,
+                isPickerVisible = false
+            )
+        }
+    }
+
+    fun backToPlatformPicker() {
+        _uiState.update { it.copy(isPickerVisible = true) }
     }
 
     fun updateInput(text: String) {
@@ -93,15 +108,18 @@ class SocialAiViewModel : ViewModel() {
         _uiState.update { it.copy(attachedBitmap = null) }
     }
 
-    fun clearChat() {
-        _uiState.update {
-            it.copy(
-                messages = listOf(
-                    SocialChatMessage(
-                        isUser = false,
-                        text = "Sesi baru siap! Mau buat konten, balasan chat, atau strategi media sosial apa hari ini?"
-                    )
-                ),
+    fun clearCurrentPlatformChat() {
+        val platform = _uiState.value.selectedPlatform
+        _uiState.update { state ->
+            val updatedMap = state.conversationsByPlatform.toMutableMap()
+            updatedMap[platform.id] = listOf(
+                SocialChatMessage(
+                    isUser = false,
+                    text = "Sesi baru ${platform.title} siap! Apa yang ingin kita buat sekarang?"
+                )
+            )
+            state.copy(
+                conversationsByPlatform = updatedMap,
                 attachedBitmap = null
             )
         }
@@ -114,7 +132,7 @@ class SocialAiViewModel : ViewModel() {
         if (_uiState.value.isGenerating) return
 
         val platform = _uiState.value.selectedPlatform
-        val userDisplay = if (rawPrompt.isNotBlank()) rawPrompt else "Analisis gambar ini untuk konten media sosial."
+        val userDisplay = if (rawPrompt.isNotBlank()) rawPrompt else "Analisis gambar ini untuk ${platform.title}."
         val userMessage = SocialChatMessage(
             isUser = true,
             text = userDisplay,
@@ -129,17 +147,20 @@ class SocialAiViewModel : ViewModel() {
             isStreaming = true
         )
 
-        _uiState.update {
-            it.copy(
-                messages = it.messages + userMessage + placeholderAssistant,
-                inputText = if (overridePrompt == null) "" else it.inputText,
+        _uiState.update { state ->
+            val currentList = state.activeMessages
+            val updatedMap = state.conversationsByPlatform.toMutableMap()
+            updatedMap[platform.id] = currentList + userMessage + placeholderAssistant
+            state.copy(
+                conversationsByPlatform = updatedMap,
+                inputText = if (overridePrompt == null) "" else state.inputText,
                 attachedBitmap = null,
                 isGenerating = true
             )
         }
 
         viewModelScope.launch {
-            val fullPrompt = "Konteks Platform: ${platform.roleHint}\nPermintaan Pengguna: $userDisplay"
+            val fullPrompt = "Platform Spesifik: ${platform.title} (${platform.roleHint})\nPermintaan Pengguna: $userDisplay"
             val builder = StringBuilder()
             try {
                 withTimeout(60_000L) {
@@ -150,16 +171,17 @@ class SocialAiViewModel : ViewModel() {
                     model.generateContentStream(inputContent).collect { chunk ->
                         val chunkText = chunk.text.orEmpty()
                         builder.append(chunkText)
-                        updateAssistantMessage(assistantMsgId, builder.toString(), isStreaming = true)
+                        updateAssistantMessage(platform.id, assistantMsgId, builder.toString(), isStreaming = true)
                     }
                 }
                 val finalText = builder.toString().ifBlank {
                     "Maaf, AI tidak mengembalikan teks. Silakan ulangi perintah Anda."
                 }
-                updateAssistantMessage(assistantMsgId, finalText, isStreaming = false)
+                updateAssistantMessage(platform.id, assistantMsgId, finalText, isStreaming = false)
             } catch (e: TimeoutCancellationException) {
                 Log.e(TAG, "Social AI stream timed out", e)
                 updateAssistantMessage(
+                    platform.id,
                     assistantMsgId,
                     "Koneksi AI timeout setelah 60 detik. Silakan coba lagi.",
                     isStreaming = false,
@@ -170,6 +192,7 @@ class SocialAiViewModel : ViewModel() {
             } catch (e: Exception) {
                 Log.e(TAG, "Social AI stream failed", e)
                 updateAssistantMessage(
+                    platform.id,
                     assistantMsgId,
                     e.localizedMessage ?: "Gagal menghubungi asisten AI.",
                     isStreaming = false,
@@ -182,21 +205,23 @@ class SocialAiViewModel : ViewModel() {
     }
 
     private fun updateAssistantMessage(
-        id: String,
+        platformId: String,
+        msgId: String,
         text: String,
         isStreaming: Boolean,
         isError: Boolean = false
     ) {
         _uiState.update { state ->
-            state.copy(
-                messages = state.messages.map { msg ->
-                    if (msg.id == id) {
-                        msg.copy(text = text, isStreaming = isStreaming, isError = isError)
-                    } else {
-                        msg
-                    }
+            val updatedMap = state.conversationsByPlatform.toMutableMap()
+            val list = updatedMap[platformId].orEmpty().map { msg ->
+                if (msg.id == msgId) {
+                    msg.copy(text = text, isStreaming = isStreaming, isError = isError)
+                } else {
+                    msg
                 }
-            )
+            }
+            updatedMap[platformId] = list
+            state.copy(conversationsByPlatform = updatedMap)
         }
     }
 }

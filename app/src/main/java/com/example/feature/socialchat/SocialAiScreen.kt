@@ -1,11 +1,20 @@
 package com.example.feature.socialchat
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +35,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
@@ -59,40 +69,88 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.components.LiquidGlassSurface
 import com.example.ui.theme.LocalLiquidGlassPalette
 
-private val QuickSocialPrompts = listOf(
-    "Caption Viral" to "Buatkan 3 variasi caption Instagram/TikTok yang engaging dengan hook kuat dan hashtag relevan tentang produk lifestyle.",
-    "Balas DM" to "Buatkan 3 template balasan DM/WhatsApp yang ramah, profesional, dan cepat closing untuk pelanggan yang menanyakan harga.",
-    "Skrip TikTok" to "Buatkan skrip video TikTok 30 detik (Hook 3 detik, Isi, Call-to-Action) untuk konten review gadget estetik.",
-    "Thread X" to "Buatkan thread X (Twitter) 5 bagian yang ringkas, informatif, dan memancing diskusi tentang tren AI kreatif."
-)
-
 @Composable
 fun SocialAiScreen(
     modifier: Modifier = Modifier,
+    onExitToHome: () -> Unit = {},
     viewModel: SocialAiViewModel = viewModel()
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    BackHandler(enabled = !state.isPickerVisible) {
+        viewModel.backToPlatformPicker()
+    }
+
+    AnimatedContent(
+        targetState = state.isPickerVisible,
+        modifier = modifier.fillMaxSize(),
+        transitionSpec = {
+            if (targetState) {
+                (fadeIn() + slideInHorizontally { -it / 5 }) togetherWith
+                    (fadeOut() + slideOutHorizontally { it / 5 })
+            } else {
+                (fadeIn() + slideInHorizontally { it / 5 }) togetherWith
+                    (fadeOut() + slideOutHorizontally { -it / 5 })
+            }
+        },
+        label = "social_hub_to_chat_transition"
+    ) { showPicker ->
+        if (showPicker) {
+            SocialPlatformPickerScreen(
+                searchQuery = state.searchQuery,
+                showExtraPlatforms = state.showExtraPlatforms,
+                onSearchQueryChange = { viewModel.updateSearchQuery(it) },
+                onToggleExtraPlatforms = { viewModel.toggleExtraPlatforms() },
+                onPlatformSelected = { viewModel.openPlatformChat(it) },
+                onBackPressed = onExitToHome
+            )
+        } else {
+            SocialPlatformChatRoom(
+                state = state,
+                onBackToPicker = { viewModel.backToPlatformPicker() },
+                onClearChat = { viewModel.clearCurrentPlatformChat() },
+                onUpdateInput = { viewModel.updateInput(it) },
+                onAttachImage = { ctx, uri -> viewModel.attachImage(ctx, uri) },
+                onClearImage = { viewModel.clearAttachedImage() },
+                onSendPrompt = { viewModel.sendPrompt(it) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SocialPlatformChatRoom(
+    state: SocialAiUiState,
+    onBackToPicker: () -> Unit,
+    onClearChat: () -> Unit,
+    onUpdateInput: (String) -> Unit,
+    onAttachImage: (android.content.Context, android.net.Uri) -> Unit,
+    onClearImage: () -> Unit,
+    onSendPrompt: (String?) -> Unit
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val glass = LocalLiquidGlassPalette.current
     val listState = rememberLazyListState()
+    val platform = state.selectedPlatform
+    val messages = state.activeMessages
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            viewModel.attachImage(context, uri)
+            onAttachImage(context, uri)
         }
     }
 
-    LaunchedEffect(state.messages.size, state.messages.lastOrNull()?.text) {
-        if (state.messages.isNotEmpty()) {
-            listState.animateScrollToItem(state.messages.lastIndex)
+    LaunchedEffect(messages.size, messages.lastOrNull()?.text) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.lastIndex)
         }
     }
 
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -102,26 +160,53 @@ fun SocialAiScreen(
                 .widthIn(max = 640.dp)
                 .fillMaxSize()
         ) {
-            // Header
+            // Platform-specific Chat Header with Back to 3x4 Picker Grid
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Social AI Copilot",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = glass.textPrimary
-                    )
-                    Text(
-                        text = "Konten, balasan pesan & otomasi lintas platform",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = glass.textSecondary
-                    )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.08f))
+                            .border(1.dp, Color.White.copy(alpha = 0.24f), CircleShape)
+                            .clickable(onClick = onBackToPicker)
+                            .testTag("chat_back_to_picker"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                            contentDescription = "Kembali ke daftar platform",
+                            tint = glass.textPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    SocialPlatformIconBadge(spec = platform, size = 38.dp)
+
+                    Column {
+                        Text(
+                            text = platform.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = glass.textPrimary
+                        )
+                        Text(
+                            text = platform.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = platform.primaryColor
+                        )
+                    }
                 }
+
                 IconButton(
-                    onClick = { viewModel.clearChat() },
+                    onClick = onClearChat,
                     modifier = Modifier.minimumInteractiveComponentSize().testTag("social_clear_chat")
                 ) {
                     Icon(
@@ -134,41 +219,16 @@ fun SocialAiScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Platform Selector Row
+            // Tailored Quick Prompts for the chosen Social Platform
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(SocialPlatform.entries) { platform ->
-                    val selected = state.selectedPlatform == platform
-                    LiquidGlassSurface(
-                        modifier = Modifier
-                            .minimumInteractiveComponentSize()
-                            .testTag("social_platform_${platform.name.lowercase()}"),
-                        shape = RoundedCornerShape(16.dp),
-                        cornerRadiusDp = 16.dp,
-                        tintColor = if (selected) glass.cyanAccent.copy(alpha = 0.28f) else null,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                        onClick = { viewModel.selectPlatform(platform) }
-                    ) {
-                        Text(
-                            text = platform.title,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (selected) glass.textPrimary else glass.textSecondary
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Quick Automation Prompts
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(QuickSocialPrompts) { (label, prompt) ->
+                items(platform.quickPrompts) { (label, prompt) ->
                     LiquidGlassSurface(
                         modifier = Modifier.minimumInteractiveComponentSize(),
                         shape = RoundedCornerShape(14.dp),
                         cornerRadiusDp = 14.dp,
-                        tintColor = glass.violetAccent.copy(alpha = 0.16f),
+                        tintColor = platform.primaryColor.copy(alpha = 0.16f),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
-                        onClick = { viewModel.sendPrompt(prompt) }
+                        onClick = { onSendPrompt(prompt) }
                     ) {
                         Text(
                             text = label,
@@ -188,7 +248,7 @@ fun SocialAiScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(bottom = 8.dp)
             ) {
-                items(state.messages, key = { it.id }) { msg ->
+                items(messages, key = { it.id }) { msg ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = if (msg.isUser) Arrangement.End else Arrangement.Start
@@ -204,7 +264,7 @@ fun SocialAiScreen(
                             cornerRadiusDp = 20.dp,
                             tintColor = when {
                                 msg.isError -> glass.roseAccent.copy(alpha = 0.20f)
-                                msg.isUser -> glass.blueAccent.copy(alpha = 0.30f)
+                                msg.isUser -> platform.primaryColor.copy(alpha = 0.24f)
                                 else -> null
                             },
                             elevated = !msg.isUser,
@@ -215,7 +275,7 @@ fun SocialAiScreen(
                                     Text(
                                         text = "${msg.platformTag}${if (msg.hasImageAttachment) " • +Foto" else ""}",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = glass.cyanAccent
+                                        color = platform.primaryColor
                                     )
                                 }
                                 if (msg.isStreaming && msg.text.isBlank()) {
@@ -226,10 +286,10 @@ fun SocialAiScreen(
                                         CircularProgressIndicator(
                                             modifier = Modifier.size(14.dp),
                                             strokeWidth = 2.dp,
-                                            color = glass.cyanAccent
+                                            color = platform.primaryColor
                                         )
                                         Text(
-                                            text = "Menyusun respons...",
+                                            text = "Menyusun respons ${platform.title}...",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = glass.textSecondary
                                         )
@@ -262,7 +322,7 @@ fun SocialAiScreen(
                                                     putExtra(Intent.EXTRA_TEXT, msg.text)
                                                 }
                                                 context.startActivity(
-                                                    Intent.createChooser(sendIntent, "Bagikan ke Media Sosial")
+                                                    Intent.createChooser(sendIntent, "Bagikan ke ${platform.title}")
                                                 )
                                             },
                                             modifier = Modifier.size(36.dp)
@@ -282,7 +342,6 @@ fun SocialAiScreen(
                 }
             }
 
-            // Attached Image Thumbnail Preview
             if (state.attachedBitmap != null) {
                 Row(
                     modifier = Modifier.padding(vertical = 6.dp),
@@ -291,7 +350,7 @@ fun SocialAiScreen(
                 ) {
                     Box {
                         Image(
-                            bitmap = state.attachedBitmap!!.asImageBitmap(),
+                            bitmap = state.attachedBitmap.asImageBitmap(),
                             contentDescription = "Lampiran gambar",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
@@ -299,7 +358,7 @@ fun SocialAiScreen(
                                 .clip(RoundedCornerShape(12.dp))
                         )
                         IconButton(
-                            onClick = { viewModel.clearAttachedImage() },
+                            onClick = onClearImage,
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .size(22.dp)
@@ -314,7 +373,7 @@ fun SocialAiScreen(
                         }
                     }
                     Text(
-                        text = "Foto siap dianalisis untuk konten/balasan",
+                        text = "Foto siap dianalisis untuk ${platform.title}",
                         style = MaterialTheme.typography.labelSmall,
                         color = glass.cyanAccent
                     )
@@ -351,10 +410,10 @@ fun SocialAiScreen(
 
                     OutlinedTextField(
                         value = state.inputText,
-                        onValueChange = { viewModel.updateInput(it) },
+                        onValueChange = onUpdateInput,
                         placeholder = {
                             Text(
-                                text = "Perintah konten / balas chat...",
+                                text = "Tanya ${platform.title}...",
                                 color = glass.textMuted,
                                 style = MaterialTheme.typography.bodyMedium
                             )
@@ -373,7 +432,7 @@ fun SocialAiScreen(
                     )
 
                     IconButton(
-                        onClick = { viewModel.sendPrompt() },
+                        onClick = { onSendPrompt(null) },
                         enabled = !state.isGenerating &&
                             (state.inputText.isNotBlank() || state.attachedBitmap != null),
                         modifier = Modifier
@@ -397,7 +456,7 @@ fun SocialAiScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(104.dp))
+            Spacer(modifier = Modifier.height(108.dp))
         }
     }
 }
