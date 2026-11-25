@@ -1,9 +1,14 @@
 package com.example.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,11 +43,13 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -64,8 +71,8 @@ fun WorkflowStepBar(
     val glass = LocalLiquidGlassPalette.current
     LiquidGlassSurface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        cornerRadiusDp = 18.dp,
+        shape = RoundedCornerShape(22.dp),
+        cornerRadiusDp = 22.dp,
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Row(
@@ -78,27 +85,42 @@ fun WorkflowStepBar(
                 val isActive = index == currentStepIndex
                 val pillColor by animateColorAsState(
                     targetValue = when {
-                        isActive -> glass.cyanAccent.copy(alpha = 0.28f)
-                        isCompleted -> glass.mintAccent.copy(alpha = 0.22f)
-                        else -> Color.White.copy(alpha = 0.06f)
+                        isActive -> glass.cyanAccent.copy(alpha = 0.30f)
+                        isCompleted -> glass.mintAccent.copy(alpha = 0.24f)
+                        else -> Color.White.copy(alpha = 0.10f)
                     },
                     label = "step_pill_$index"
                 )
                 val borderColor = when {
-                    isActive -> glass.cyanAccent.copy(alpha = 0.8f)
-                    isCompleted -> glass.mintAccent.copy(alpha = 0.6f)
-                    else -> Color.White.copy(alpha = 0.14f)
+                    isActive -> Color.White.copy(alpha = 0.78f)
+                    isCompleted -> glass.mintAccent.copy(alpha = 0.70f)
+                    else -> Color.White.copy(alpha = 0.24f)
                 }
+
+                val pillInteraction = remember { MutableInteractionSource() }
+                val isPillPressed by pillInteraction.collectIsPressedAsState()
+                val pillScale by animateFloatAsState(
+                    targetValue = if (onStepClick != null && isPillPressed) 0.94f else 1f,
+                    animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
+                    label = "step_scale_$index"
+                )
 
                 Row(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
+                        .graphicsLayer {
+                            scaleX = pillScale
+                            scaleY = pillScale
+                        }
+                        .clip(RoundedCornerShape(16.dp))
                         .background(pillColor)
-                        .border(0.8.dp, borderColor, RoundedCornerShape(12.dp))
+                        .border(0.9.dp, borderColor, RoundedCornerShape(16.dp))
                         .then(
                             if (onStepClick != null) {
-                                Modifier.clickable { onStepClick(index) }
+                                Modifier.clickable(
+                                    interactionSource = pillInteraction,
+                                    indication = null
+                                ) { onStepClick(index) }
                             } else {
                                 Modifier
                             }
@@ -115,7 +137,7 @@ fun WorkflowStepBar(
                                 when {
                                     isActive -> glass.cyanAccent
                                     isCompleted -> glass.mintAccent
-                                    else -> Color.White.copy(alpha = 0.16f)
+                                    else -> Color.White.copy(alpha = 0.22f)
                                 }
                             ),
                         contentAlignment = Alignment.Center
@@ -124,14 +146,14 @@ fun WorkflowStepBar(
                             Icon(
                                 imageVector = Icons.Filled.Check,
                                 contentDescription = null,
-                                tint = Color(0xFF060914),
+                                tint = glass.background,
                                 modifier = Modifier.size(12.dp)
                             )
                         } else {
                             Text(
                                 text = "${index + 1}",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = if (isActive) Color(0xFF060914) else glass.textPrimary
+                                color = if (isActive) glass.background else glass.textPrimary
                             )
                         }
                     }
@@ -211,7 +233,7 @@ fun WorkflowHubModalSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF0B1124),
+        containerColor = Color(0xFF172642),
         contentColor = glass.textPrimary
     ) {
         Column(

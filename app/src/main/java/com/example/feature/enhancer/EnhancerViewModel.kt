@@ -8,8 +8,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.R
 import com.example.core.GeminiResilience
-import com.google.firebase.Firebase
-import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.ImagePart
 import com.google.firebase.ai.type.ResponseModality
 import com.google.firebase.ai.type.Schema
@@ -70,12 +68,23 @@ class EnhancerViewModel : ViewModel() {
         )
     }
 
+    private val restoreConfig by lazy {
+        generationConfig {
+            responseModalities = listOf(ResponseModality.IMAGE)
+        }
+    }
+
     private val restoreImageModel by lazy {
-        Firebase.ai.generativeModel(
-            modelName = "gemini-nano-banana-2.1",
-            generationConfig = generationConfig {
-                responseModalities = listOf(ResponseModality.IMAGE)
-            }
+        GeminiResilience.createModel(
+            modelName = GeminiResilience.PRIMARY_IMAGE_MODEL,
+            generationConfig = restoreConfig
+        )
+    }
+
+    private val fallbackRestoreImageModel by lazy {
+        GeminiResilience.createModel(
+            modelName = GeminiResilience.FALLBACK_IMAGE_MODEL,
+            generationConfig = restoreConfig
         )
     }
 
@@ -276,15 +285,17 @@ class EnhancerViewModel : ViewModel() {
             _uiState.update { it.copy(aiState = AiEnhanceState.RestoringImage) }
             try {
                 val input = ImageEnhancementEngine.compressForAiAnalysis(current)
-                val response = withTimeout(60_000L) {
-                    restoreImageModel.generateContent(
-                        content {
-                            image(input)
-                            text(
-                                "Enhance and restore this image into ultra-sharp high-definition clarity, " +
-                                    "removing blur and compression artifacts while keeping exact subjects, faces, colors, and composition natural."
-                            )
-                        }
+                val promptContent = content {
+                    image(input)
+                    text(
+                        "Enhance and restore this image into ultra-sharp high-definition clarity, " +
+                            "removing blur and compression artifacts while keeping exact subjects, faces, colors, and composition natural."
+                    )
+                }
+                val (response, _) = withTimeout(60_000L) {
+                    GeminiResilience.executeWithFlashFallback(
+                        primaryAction = { restoreImageModel.generateContent(promptContent) },
+                        fallbackAction = { fallbackRestoreImageModel.generateContent(promptContent) }
                     )
                 }
                 val restored = response.candidates.firstOrNull()
@@ -316,7 +327,10 @@ class EnhancerViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         aiState = AiEnhanceState.Error(
-                            e.localizedMessage ?: "Restorasi AI gagal (pastikan billing Blaze aktif untuk model gambar)."
+                            GeminiResilience.formatUserErrorMessage(
+                                e,
+                                "Restorasi AI gagal (pastikan billing Blaze aktif untuk model gambar)."
+                            )
                         )
                     )
                 }

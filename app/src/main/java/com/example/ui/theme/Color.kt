@@ -2,29 +2,29 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Deep Liquid Obsidian & Refractive Glass Palette
-val ObsidianNight = Color(0xFF060914)
-val DeepSapphire = Color(0xFF0D1429)
-val GlassMidnight = Color(0xFF131C38)
+// Twilight Sky Slate & Airy Mist Palette (harmonized with background artwork)
+val ObsidianNight = Color(0xFF132038)
+val DeepSapphire = Color(0xFF1B2D4B)
+val GlassMidnight = Color(0xFF24395C)
 
-// Refractive Specular Accents
-val LiquidCyan = Color(0xFF3CEBFF)
-val GlacialBlue = Color(0xFF4F86FF)
-val PrismViolet = Color(0xFF9E7BFF)
-val AuroraMint = Color(0xFF4FFFB0)
-val SolarAmber = Color(0xFFFFB84D)
-val CoralRose = Color(0xFFFF6B8B)
+// Iridescent Bubble & Balloon Specular Accents
+val LiquidCyan = Color(0xFF7CE8FF)
+val GlacialBlue = Color(0xFF82B6FF)
+val PrismViolet = Color(0xFFC3A8FF)
+val AuroraMint = Color(0xFF7EFFD4)
+val SolarAmber = Color(0xFFF6D4A6)
+val CoralRose = Color(0xFFFF92B4)
 
 // Typography & Content Surfaces
-val FrostWhite = Color(0xFFF3F7FF)
-val MistSilver = Color(0xFFB3C2DC)
-val SlateGlass = Color(0xFF7B8BA8)
+val FrostWhite = Color(0xFFF8FBFF)
+val MistSilver = Color(0xFFD2E1F4)
+val SlateGlass = Color(0xFF9DB5D4)
 
-// Translucent Glass Fill & Rim Tokens
-val GlassFillBase = Color(0x1CFFFFFF)
-val GlassFillElevated = Color(0x28FFFFFF)
-val GlassFillDeep = Color(0x660B1124)
-val GlassBorderBright = Color(0x52FFFFFF)
-val GlassBorderSoft = Color(0x22FFFFFF)
-val GlassCyanGlow = Color(0x383CEBFF)
-val GlassVioletGlow = Color(0x309E7BFF)
+// Translucent Bubble Glass Fill & Iridescent Rim Tokens
+val GlassFillBase = Color(0x4A1D2F4E)
+val GlassFillElevated = Color(0x5E263D63)
+val GlassFillDeep = Color(0x7815233D)
+val GlassBorderBright = Color(0xB8FFFFFF)
+val GlassBorderSoft = Color(0x4AD6EAFF)
+val GlassCyanGlow = Color(0x427CE8FF)
+val GlassVioletGlow = Color(0x3DC3A8FF)

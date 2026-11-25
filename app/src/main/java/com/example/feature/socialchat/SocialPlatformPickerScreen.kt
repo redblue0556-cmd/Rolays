@@ -47,12 +47,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -161,21 +162,25 @@ fun SocialPlatformPickerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
+                    .clip(RoundedCornerShape(26.dp))
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color.White.copy(alpha = 0.11f),
-                                Color(0xFF0E162B).copy(alpha = 0.72f)
+                                Color(0xFF283E64).copy(alpha = 0.60f),
+                                Color(0xFF182846).copy(alpha = 0.68f)
                             )
                         )
                     )
                     .border(
-                        width = 1.dp,
+                        width = 1.1.dp,
                         brush = Brush.linearGradient(
-                            listOf(Color.White.copy(alpha = 0.28f), glass.cyanAccent.copy(alpha = 0.18f))
+                            listOf(
+                                Color.White.copy(alpha = 0.72f),
+                                glass.cyanAccent.copy(alpha = 0.44f),
+                                glass.violetAccent.copy(alpha = 0.38f)
+                            )
                         ),
-                        shape = RoundedCornerShape(22.dp)
+                        shape = RoundedCornerShape(26.dp)
                     )
             ) {
                 OutlinedTextField(
@@ -359,59 +364,64 @@ private fun LiquidGlassPlatformGridCard(
         label = "card_press_${spec.id}"
     )
 
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(26.dp)
     val borderBrush = Brush.linearGradient(
         colors = listOf(
-            if (isPressed) spec.primaryColor.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.36f),
-            spec.primaryColor.copy(alpha = if (isPressed) 0.55f else 0.20f),
-            Color.White.copy(alpha = 0.10f),
-            spec.secondaryColor.copy(alpha = 0.25f)
+            if (isPressed) spec.primaryColor.copy(alpha = 0.95f) else Color.White.copy(alpha = 0.78f),
+            spec.primaryColor.copy(alpha = if (isPressed) 0.68f else 0.44f),
+            glass.violetAccent.copy(alpha = 0.36f),
+            spec.secondaryColor.copy(alpha = 0.42f)
         )
     )
 
     Box(
         modifier = modifier
             .aspectRatio(0.86f)
-            .scale(scale)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .clip(shape)
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = if (isPressed) 0.20f else 0.13f),
-                        Color(0xFF141D35).copy(alpha = 0.68f),
-                        Color(0xFF0A1020).copy(alpha = 0.86f)
+                        Color(0xFF2A4169).copy(alpha = if (isPressed) 0.68f else 0.56f),
+                        Color(0xFF1D2F50).copy(alpha = 0.62f),
+                        Color(0xFF14233E).copy(alpha = 0.72f)
                     )
                 ),
                 shape = shape
             )
-            .drawBehind {
-                // Soft inner neon refraction behind platform icon
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            spec.primaryColor.copy(alpha = if (isPressed) 0.32f else 0.16f),
-                            Color.Transparent
-                        ),
-                        center = Offset(size.width * 0.5f, size.height * 0.30f),
-                        radius = size.width * 0.55f
+            .drawWithCache {
+                val glowBrush = Brush.radialGradient(
+                    colors = listOf(
+                        spec.primaryColor.copy(alpha = if (isPressed) 0.36f else 0.22f),
+                        Color.Transparent
                     ),
-                    center = Offset(size.width * 0.5f, size.height * 0.30f),
-                    radius = size.width * 0.55f
+                    center = Offset(size.width * 0.5f, size.height * 0.32f),
+                    radius = size.width * 0.58f
                 )
-                // Glossy top-left glass catchlight
-                drawRoundRect(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.16f),
-                            Color.Transparent
-                        ),
-                        start = Offset.Zero,
-                        end = Offset(size.width * 0.6f, size.height * 0.4f)
-                    ),
-                    cornerRadius = CornerRadius(20.dp.toPx(), 20.dp.toPx())
+                val crescentBrush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.32f),
+                        Color.White.copy(alpha = 0.06f),
+                        Color.Transparent
+                    )
                 )
+                val glowCenter = Offset(size.width * 0.5f, size.height * 0.32f)
+                val glowRadius = size.width * 0.58f
+                val crescentPos = Offset(size.width * 0.08f, -size.height * 0.10f)
+                val crescentSize = Size(size.width * 0.84f, size.height * 0.36f)
+                val pillPos = Offset(size.width * 0.14f, 6.dp.toPx())
+                val pillSize = Size(16.dp.toPx(), 4.5.dp.toPx())
+
+                onDrawBehind {
+                    drawCircle(brush = glowBrush, center = glowCenter, radius = glowRadius)
+                    drawOval(brush = crescentBrush, topLeft = crescentPos, size = crescentSize)
+                    drawOval(color = Color.White.copy(alpha = 0.42f), topLeft = pillPos, size = pillSize)
+                }
             }
-            .border(width = if (isPressed) 1.4.dp else 1.dp, brush = borderBrush, shape = shape)
+            .border(width = if (isPressed) 1.5.dp else 1.1.dp, brush = borderBrush, shape = shape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(color = spec.primaryColor),
@@ -468,31 +478,48 @@ private fun UniversalSocialAiCard(
         animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium),
         label = "universal_press"
     )
-    val shape = RoundedCornerShape(24.dp)
+    val shape = RoundedCornerShape(28.dp)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .minimumInteractiveComponentSize()
-            .scale(scale)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .clip(shape)
             .background(
                 brush = Brush.horizontalGradient(
                     colors = listOf(
-                        glass.violetAccent.copy(alpha = 0.34f),
-                        Color(0xFF1D2849).copy(alpha = 0.80f),
-                        glass.cyanAccent.copy(alpha = 0.32f)
+                        glass.violetAccent.copy(alpha = 0.38f),
+                        Color(0xFF23395E).copy(alpha = 0.72f),
+                        glass.cyanAccent.copy(alpha = 0.38f)
                     )
                 ),
                 shape = shape
             )
+            .drawWithCache {
+                val topSheen = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.28f),
+                        Color.Transparent
+                    )
+                )
+                val sheenPos = Offset(size.width * 0.06f, -size.height * 0.18f)
+                val sheenSize = Size(size.width * 0.88f, size.height * 0.50f)
+                onDrawBehind {
+                    drawOval(brush = topSheen, topLeft = sheenPos, size = sheenSize)
+                }
+            }
             .border(
-                width = 1.1.dp,
+                width = 1.2.dp,
                 brush = Brush.linearGradient(
                     listOf(
-                        Color.White.copy(alpha = 0.60f),
-                        glass.cyanAccent.copy(alpha = 0.45f),
-                        glass.violetAccent.copy(alpha = 0.50f)
+                        Color.White.copy(alpha = 0.85f),
+                        glass.cyanAccent.copy(alpha = 0.62f),
+                        glass.violetAccent.copy(alpha = 0.58f),
+                        glass.roseAccent.copy(alpha = 0.44f)
                     )
                 ),
                 shape = shape

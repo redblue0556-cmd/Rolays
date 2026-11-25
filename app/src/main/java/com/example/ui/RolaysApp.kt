@@ -1,8 +1,16 @@
 package com.example.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -83,7 +91,8 @@ fun RolaysApp() {
     val geminiFlashViewModel: GeminiFlashViewModel = viewModel()
 
     val navigateToDestination: (RolaysDestination) -> Unit = { target ->
-        if (target.route != currentRoute) {
+        val activeRoute = navController.currentBackStackEntry?.destination?.route
+        if (target.route != activeRoute) {
             navController.navigate(target.route) {
                 popUpTo(navController.graph.findStartDestination().id) {
                     saveState = true
@@ -94,12 +103,17 @@ fun RolaysApp() {
         }
     }
 
-    val ambientAccent = when (selectedDestination) {
+    val targetAmbientAccent = when (selectedDestination) {
         RolaysDestination.ENHANCER -> glass.cyanAccent
         RolaysDestination.DOWNLOADER -> glass.blueAccent
         RolaysDestination.SOCIAL_CHAT -> glass.violetAccent
         RolaysDestination.GEMINI_FLASH -> glass.mintAccent
     }
+    val ambientAccent by animateColorAsState(
+        targetValue = targetAmbientAccent,
+        animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+        label = "ambient_accent"
+    )
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val isExpandedScreen = maxWidth >= 840.dp
@@ -118,7 +132,11 @@ fun RolaysApp() {
                 )
 
                 Column(modifier = Modifier.weight(1f).fillMaxSize()) {
-                    if (selectedDestination != RolaysDestination.SOCIAL_CHAT) {
+                    AnimatedVisibility(
+                        visible = selectedDestination != RolaysDestination.SOCIAL_CHAT,
+                        enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(220)),
+                        exit = shrinkVertically(tween(200, easing = FastOutSlowInEasing)) + fadeOut(tween(180))
+                    ) {
                         RolaysTopBrandBar(
                             selectedDestination = selectedDestination,
                             onOpenWorkflowHub = { showWorkflowHub = true }
@@ -154,7 +172,11 @@ fun RolaysApp() {
                             .fillMaxSize()
                             .windowInsetsPadding(WindowInsets.statusBars)
                     ) {
-                        if (selectedDestination != RolaysDestination.SOCIAL_CHAT) {
+                        AnimatedVisibility(
+                            visible = selectedDestination != RolaysDestination.SOCIAL_CHAT,
+                            enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(220)),
+                            exit = shrinkVertically(tween(200, easing = FastOutSlowInEasing)) + fadeOut(tween(180))
+                        ) {
                             RolaysTopBrandBar(
                                 selectedDestination = selectedDestination,
                                 onOpenWorkflowHub = { showWorkflowHub = true }
@@ -218,10 +240,11 @@ private fun RolaysTopBrandBar(
             modifier = Modifier
                 .minimumInteractiveComponentSize()
                 .testTag("open_workflow_hub_button"),
-            shape = RoundedCornerShape(16.dp),
-            cornerRadiusDp = 16.dp,
-            tintColor = glass.cyanAccent.copy(alpha = 0.20f),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(22.dp),
+            cornerRadiusDp = 22.dp,
+            tintColor = glass.cyanAccent.copy(alpha = 0.24f),
+            elevated = true,
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
             onClick = onOpenWorkflowHub
         ) {
             Row(
@@ -255,12 +278,39 @@ private fun RolaysNavHost(
     onOpenWorkflowHub: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val destinationOrder = RolaysDestination.entries
+    fun routeIndex(route: String?): Int =
+        destinationOrder.indexOfFirst { it.route == route }.takeIf { it >= 0 } ?: 0
+
     NavHost(
         navController = navController,
         startDestination = RolaysDestination.ENHANCER.route,
         modifier = modifier,
-        enterTransition = { fadeIn(animationSpec = tween(220)) },
-        exitTransition = { fadeOut(animationSpec = tween(180)) }
+        enterTransition = {
+            val fromIdx = routeIndex(initialState.destination.route)
+            val toIdx = routeIndex(targetState.destination.route)
+            val forward = toIdx >= fromIdx
+            slideInHorizontally(
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                initialOffsetX = { width -> if (forward) (width * 0.16f).toInt() else -(width * 0.16f).toInt() }
+            ) + fadeIn(
+                animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing)
+            ) + scaleIn(
+                initialScale = 0.985f,
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+            )
+        },
+        exitTransition = {
+            val fromIdx = routeIndex(initialState.destination.route)
+            val toIdx = routeIndex(targetState.destination.route)
+            val forward = toIdx >= fromIdx
+            slideOutHorizontally(
+                animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+                targetOffsetX = { width -> if (forward) -(width * 0.10f).toInt() else (width * 0.10f).toInt() }
+            ) + fadeOut(
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+            )
+        }
     ) {
         composable(RolaysDestination.ENHANCER.route) {
             EnhancerScreen(

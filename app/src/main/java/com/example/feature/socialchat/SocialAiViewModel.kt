@@ -11,7 +11,6 @@ import com.example.feature.enhancer.ImageEnhancementEngine
 import com.google.firebase.ai.type.content
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -199,39 +198,15 @@ class SocialAiViewModel : ViewModel() {
                         if (image != null) image(image)
                         text(fullPrompt)
                     }
-                    try {
-                        model.generateContentStream(inputContent).collect { chunk ->
-                            val chunkText = chunk.text.orEmpty()
+                    GeminiResilience.streamWithFlashFallback(
+                        primaryStream = { model.generateContentStream(inputContent) },
+                        fallbackStream = { fallbackModel.generateContentStream(inputContent) },
+                        hasEmittedText = { builder.isNotEmpty() },
+                        onChunk = { chunkText ->
                             builder.append(chunkText)
                             updateAssistantMessage(platform.id, assistantMsgId, builder.toString(), isStreaming = true)
                         }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (primaryErr: Exception) {
-                        if (builder.isEmpty() && GeminiResilience.isTransientOverload(primaryErr)) {
-                            Log.w(TAG, "Primary model high demand in SocialAi, retrying then falling back", primaryErr)
-                            delay(650L)
-                            try {
-                                model.generateContentStream(inputContent).collect { chunk ->
-                                    builder.append(chunk.text.orEmpty())
-                                    updateAssistantMessage(platform.id, assistantMsgId, builder.toString(), isStreaming = true)
-                                }
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (retryErr: Exception) {
-                                if (builder.isEmpty() && GeminiResilience.isTransientOverload(retryErr)) {
-                                    fallbackModel.generateContentStream(inputContent).collect { chunk ->
-                                        builder.append(chunk.text.orEmpty())
-                                        updateAssistantMessage(platform.id, assistantMsgId, builder.toString(), isStreaming = true)
-                                    }
-                                } else {
-                                    throw retryErr
-                                }
-                            }
-                        } else {
-                            throw primaryErr
-                        }
-                    }
+                    )
                 }
                 val finalText = builder.toString().ifBlank {
                     "Maaf, AI tidak mengembalikan teks. Silakan ulangi perintah Anda."

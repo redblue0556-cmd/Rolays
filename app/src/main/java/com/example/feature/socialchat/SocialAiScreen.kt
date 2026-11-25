@@ -6,6 +6,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -87,11 +89,15 @@ fun SocialAiScreen(
         modifier = modifier.fillMaxSize(),
         transitionSpec = {
             if (targetState) {
-                (fadeIn() + slideInHorizontally { -it / 5 }) togetherWith
-                    (fadeOut() + slideOutHorizontally { it / 5 })
+                (fadeIn(tween(240, easing = FastOutSlowInEasing)) +
+                    slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { -it / 6 }) togetherWith
+                    (fadeOut(tween(200, easing = FastOutSlowInEasing)) +
+                        slideOutHorizontally(tween(240, easing = FastOutSlowInEasing)) { it / 6 })
             } else {
-                (fadeIn() + slideInHorizontally { it / 5 }) togetherWith
-                    (fadeOut() + slideOutHorizontally { -it / 5 })
+                (fadeIn(tween(240, easing = FastOutSlowInEasing)) +
+                    slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { it / 6 }) togetherWith
+                    (fadeOut(tween(200, easing = FastOutSlowInEasing)) +
+                        slideOutHorizontally(tween(240, easing = FastOutSlowInEasing)) { -it / 6 })
             }
         },
         label = "social_hub_to_chat_transition"
@@ -157,9 +163,16 @@ private fun SocialPlatformChatRoom(
         }
     }
 
-    LaunchedEffect(messages.size, messages.lastOrNull()?.text) {
+    LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.lastIndex)
+        }
+    }
+
+    val lastMsgBuckets = (messages.lastOrNull()?.text?.length ?: 0) / 80
+    LaunchedEffect(lastMsgBuckets) {
+        if (messages.isNotEmpty() && lastMsgBuckets > 0) {
+            listState.scrollToItem(messages.lastIndex)
         }
     }
 

@@ -13,7 +13,6 @@ import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -196,9 +195,15 @@ class GeminiFlashViewModel : ViewModel() {
                 }
                 withTimeout(60_000L) {
                     val primaryChat = getOrCreateChatSession()
-                    try {
-                        primaryChat.sendMessageStream(payload).collect { chunk ->
-                            accumulated.append(chunk.text.orEmpty())
+                    GeminiResilience.streamWithFlashFallback(
+                        primaryStream = { primaryChat.sendMessageStream(payload) },
+                        fallbackStream = {
+                            getOrCreateChatSession(GeminiResilience.FALLBACK_FLASH_MODEL)
+                                .sendMessageStream(payload)
+                        },
+                        hasEmittedText = { accumulated.isNotEmpty() },
+                        onChunk = { chunkText ->
+                            accumulated.append(chunkText)
                             updateEntry(
                                 id = assistantId,
                                 text = accumulated.toString(),
@@ -206,44 +211,7 @@ class GeminiFlashViewModel : ViewModel() {
                                 latencyMs = null
                             )
                         }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (primaryErr: Exception) {
-                        if (accumulated.isEmpty() && GeminiResilience.isTransientOverload(primaryErr)) {
-                            Log.w(TAG, "Primary Gemini 3.8 Flash overloaded, retrying then falling back", primaryErr)
-                            delay(650L)
-                            try {
-                                primaryChat.sendMessageStream(payload).collect { chunk ->
-                                    accumulated.append(chunk.text.orEmpty())
-                                    updateEntry(
-                                        id = assistantId,
-                                        text = accumulated.toString(),
-                                        isStreaming = true,
-                                        latencyMs = null
-                                    )
-                                }
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (retryErr: Exception) {
-                                if (accumulated.isEmpty() && GeminiResilience.isTransientOverload(retryErr)) {
-                                    val fallbackChat = getOrCreateChatSession(GeminiResilience.FALLBACK_FLASH_MODEL)
-                                    fallbackChat.sendMessageStream(payload).collect { chunk ->
-                                        accumulated.append(chunk.text.orEmpty())
-                                        updateEntry(
-                                            id = assistantId,
-                                            text = accumulated.toString(),
-                                            isStreaming = true,
-                                            latencyMs = null
-                                        )
-                                    }
-                                } else {
-                                    throw retryErr
-                                }
-                            }
-                        } else {
-                            throw primaryErr
-                        }
-                    }
+                    )
                 }
                 val elapsed = System.currentTimeMillis() - startTime
                 val finalOutput = accumulated.toString().ifBlank {

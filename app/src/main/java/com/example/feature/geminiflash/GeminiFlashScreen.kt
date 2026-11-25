@@ -85,9 +85,16 @@ fun GeminiFlashScreen(
         }
     }
 
-    LaunchedEffect(state.entries.size, state.entries.lastOrNull()?.text) {
+    LaunchedEffect(state.entries.size) {
         if (state.entries.isNotEmpty()) {
             listState.animateScrollToItem(state.entries.lastIndex)
+        }
+    }
+
+    val lastEntryBuckets = (state.entries.lastOrNull()?.text?.length ?: 0) / 80
+    LaunchedEffect(lastEntryBuckets) {
+        if (state.entries.isNotEmpty() && lastEntryBuckets > 0) {
+            listState.scrollToItem(state.entries.lastIndex)
         }
     }
 

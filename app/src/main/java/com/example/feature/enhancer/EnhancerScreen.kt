@@ -719,8 +719,8 @@ private fun BeforeAfterComparisonCard(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(4f / 3f)
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF0A0F1F))
+            .clip(RoundedCornerShape(24.dp))
+            .background(glass.background)
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
                     val newRatio = (offset.x / size.width.toFloat()).coerceIn(0.05f, 0.95f)
@@ -805,7 +805,7 @@ private fun BeforeAfterComparisonCard(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.CompareArrows,
                 contentDescription = "Geser perbandingan Sebelum dan Sesudah",
-                tint = Color(0xFF060B17),
+                tint = glass.background,
                 modifier = Modifier.size(22.dp)
             )
         }
